@@ -1,0 +1,527 @@
+{
+  "upload_scenarios": {
+    "main_photo_only": {
+      "description": "Minimal valid upload — only main photo",
+      "files": {
+        "main": {"filename": "product_main.jpg", "content_type": "image/jpeg", "size_bytes": 2097152, "dimensions": {"width": 3000, "height": 3000}}
+      },
+      "expected_analysis": {
+        "status": "success",
+        "quality_score": 85,
+        "flags": [],
+        "can_approve": true
+      }
+    },
+    "main_plus_additional": {
+      "description": "Main photo + 3 additional product photos",
+      "files": {
+        "main": {"filename": "product_main.jpg", "content_type": "image/jpeg", "size_bytes": 2097152, "dimensions": {"width": 3000, "height": 3000}},
+        "additional": [
+          {"filename": "product_angle1.jpg", "content_type": "image/jpeg", "size_bytes": 1800000, "dimensions": {"width": 3000, "height": 3000}},
+          {"filename": "product_angle2.jpg", "content_type": "image/jpeg", "size_bytes": 1900000, "dimensions": {"width": 3000, "height": 3000}},
+          {"filename": "product_detail.jpg", "content_type": "image/jpeg", "size_bytes": 2200000, "dimensions": {"width": 3000, "height": 3000}}
+        ]
+      },
+      "expected_analysis": {
+        "status": "success",
+        "quality_score": 90,
+        "flags": [],
+        "can_approve": true
+      }
+    },
+    "main_plus_max_references": {
+      "description": "Main photo + exactly 5 reference images (max allowed)",
+      "files": {
+        "main": {"filename": "product_main.jpg", "content_type": "image/jpeg", "size_bytes": 2097152, "dimensions": {"width": 3000, "height": 3000}},
+        "references": [
+          {"filename": "ref_competitor1.jpg", "content_type": "image/jpeg"},
+          {"filename": "ref_competitor2.jpg", "content_type": "image/jpeg"},
+          {"filename": "ref_style_guide.jpg", "content_type": "image/jpeg"},
+          {"filename": "ref_brand_colors.jpg", "content_type": "image/jpeg"},
+          {"filename": "ref_layout_example.jpg", "content_type": "image/jpeg"}
+        ]
+      },
+      "expected_analysis": {
+        "status": "success",
+        "quality_score": 88,
+        "flags": [],
+        "can_approve": true
+      }
+    },
+    "main_plus_brief": {
+      "description": "Main photo + brief text + marketplace selection",
+      "files": {
+        "main": {"filename": "product_main.jpg", "content_type": "image/jpeg", "size_bytes": 2097152, "dimensions": {"width": 3000, "height": 3000}}
+      },
+      "brief": "Premium wireless headphones with active noise cancellation, 40h battery life, Bluetooth 5.3. Target: students and remote workers.",
+      "marketplaces": ["wildberries"],
+      "expected_analysis": {
+        "status": "success",
+        "quality_score": 87,
+        "flags": [],
+        "can_approve": true
+      }
+    },
+    "full_upload_wb_only": {
+      "description": "Complete upload — main, additional, references, brief — WB only",
+      "files": {
+        "main": {"filename": "headphones_main.jpg", "content_type": "image/jpeg", "size_bytes": 3145728, "dimensions": {"width": 3000, "height": 3000}},
+        "additional": [
+          {"filename": "headphones_side.jpg", "content_type": "image/jpeg", "size_bytes": 2800000, "dimensions": {"width": 3000, "height": 3000}},
+          {"filename": "headphones_folded.jpg", "content_type": "image/jpeg", "size_bytes": 2600000, "dimensions": {"width": 3000, "height": 3000}},
+          {"filename": "headphones_case.jpg", "content_type": "image/jpeg", "size_bytes": 2400000, "dimensions": {"width": 3000, "height": 3000}}
+        ],
+        "references": [
+          {"filename": "competitor_listing.jpg", "content_type": "image/jpeg"},
+          {"filename": "brand_style.jpg", "content_type": "image/jpeg"}
+        ]
+      },
+      "brief": "Over-ear noise-cancelling headphones with 40h battery life. Premium build, comfortable for all-day wear.",
+      "marketplaces": ["wildberries"],
+      "expected_analysis": {
+        "status": "success",
+        "quality_score": 95,
+        "flags": [],
+        "can_approve": true,
+        "marketplace_rules": "wb"
+      }
+    },
+    "full_upload_wb_ozon": {
+      "description": "Complete upload — WB+Ozon, strictest rules applied",
+      "files": {
+        "main": {"filename": "matcha_tin.jpg", "content_type": "image/jpeg", "size_bytes": 2500000, "dimensions": {"width": 2000, "height": 2000}},
+        "additional": [
+          {"filename": "matcha_powder.jpg", "content_type": "image/jpeg", "size_bytes": 2200000, "dimensions": {"width": 2000, "height": 2000}},
+          {"filename": "matcha_prepared.jpg", "content_type": "image/jpeg", "size_bytes": 2100000, "dimensions": {"width": 2000, "height": 2000}}
+        ],
+        "references": [
+          {"filename": "tea_brand_premium.jpg", "content_type": "image/jpeg"}
+        ]
+      },
+      "brief": "Ceremonial-grade matcha from Uji, Kyoto. 100g tin. Organic certified, stone-ground, vibrant green color.",
+      "marketplaces": ["wildberries", "ozon"],
+      "strictest_rules": true,
+      "expected_analysis": {
+        "status": "success",
+        "quality_score": 92,
+        "flags": [],
+        "can_approve": true,
+        "marketplace_rules": "wb+ozon_strictest"
+      }
+    }
+  },
+  "invalid_input_scenarios": [
+    {
+      "id": "missing_main_photo",
+      "description": "No main photo uploaded — required field missing",
+      "files": {},
+      "brief": "Some product description",
+      "marketplaces": ["wildberries"],
+      "expected": {
+        "status": "blocked",
+        "severity": "critical",
+        "can_approve": false,
+        "error_code": "MISSING_MAIN_PHOTO",
+        "message": "Main product photo is required"
+      }
+    },
+    {
+      "id": "file_too_large",
+      "description": "Main photo exceeds 10MB limit",
+      "files": {
+        "main": {"filename": "huge.tiff", "content_type": "image/tiff", "size_bytes": 52428800, "dimensions": {"width": 8000, "height": 8000}}
+      },
+      "expected": {
+        "status": "blocked",
+        "severity": "critical",
+        "can_approve": false,
+        "error_code": "FILE_TOO_LARGE",
+        "message": "File size exceeds maximum of 10MB",
+        "max_size_bytes": 10485760
+      }
+    },
+    {
+      "id": "invalid_file_type",
+      "description": "Uploaded file is not an image (executable)",
+      "files": {
+        "main": {"filename": "product.exe", "content_type": "application/octet-stream", "size_bytes": 524288}
+      },
+      "expected": {
+        "status": "blocked",
+        "severity": "critical",
+        "can_approve": false,
+        "error_code": "INVALID_FILE_TYPE",
+        "message": "Only image files are accepted (JPEG, PNG, WebP)",
+        "allowed_types": ["image/jpeg", "image/png", "image/webp"]
+      }
+    },
+    {
+      "id": "low_resolution",
+      "description": "Main photo below minimum resolution",
+      "files": {
+        "main": {"filename": "tiny.jpg", "content_type": "image/jpeg", "size_bytes": 5000, "dimensions": {"width": 50, "height": 50}}
+      },
+      "expected": {
+        "status": "blocked",
+        "severity": "critical",
+        "can_approve": false,
+        "error_code": "LOW_RESOLUTION",
+        "message": "Image resolution below minimum requirements",
+        "min_wb": {"width": 900, "height": 900},
+        "min_ozon": {"width": 1000, "height": 1000}
+      }
+    },
+    {
+      "id": "corrupted_image",
+      "description": "Uploaded file is a corrupted/unreadable image",
+      "files": {
+        "main": {"filename": "corrupt.jpg", "content_type": "image/jpeg", "size_bytes": 1024, "corrupted": true}
+      },
+      "expected": {
+        "status": "blocked",
+        "severity": "critical",
+        "can_approve": false,
+        "error_code": "CORRUPTED_IMAGE",
+        "message": "Unable to read image file — file may be corrupted"
+      }
+    },
+    {
+      "id": "too_many_references",
+      "description": "More than 5 reference images uploaded",
+      "files": {
+        "main": {"filename": "product_main.jpg", "content_type": "image/jpeg", "size_bytes": 2097152, "dimensions": {"width": 3000, "height": 3000}},
+        "references": [
+          {"filename": "ref1.jpg"}, {"filename": "ref2.jpg"}, {"filename": "ref3.jpg"},
+          {"filename": "ref4.jpg"}, {"filename": "ref5.jpg"}, {"filename": "ref6.jpg"}
+        ]
+      },
+      "expected": {
+        "status": "blocked",
+        "severity": "critical",
+        "can_approve": false,
+        "error_code": "TOO_MANY_REFERENCES",
+        "message": "Maximum 5 reference images allowed",
+        "max_references": 5,
+        "provided": 6
+      }
+    },
+    {
+      "id": "empty_brief_warning",
+      "description": "Brief text is empty — warning, not blocking",
+      "files": {
+        "main": {"filename": "product_main.jpg", "content_type": "image/jpeg", "size_bytes": 2097152, "dimensions": {"width": 3000, "height": 3000}}
+      },
+      "brief": "",
+      "expected": {
+        "status": "warning",
+        "severity": "warning",
+        "can_approve": true,
+        "warning_code": "EMPTY_BRIEF",
+        "message": "No brief text provided — analysis will rely solely on image content"
+      }
+    },
+    {
+      "id": "brief_too_long",
+      "description": "Brief text exceeds 5000 character limit",
+      "files": {
+        "main": {"filename": "product_main.jpg", "content_type": "image/jpeg", "size_bytes": 2097152, "dimensions": {"width": 3000, "height": 3000}}
+      },
+      "brief_len_chars": 5001,
+      "expected": {
+        "status": "blocked",
+        "severity": "critical",
+        "can_approve": false,
+        "error_code": "BRIEF_TOO_LONG",
+        "message": "Brief text exceeds maximum of 5000 characters",
+        "max_chars": 5000
+      }
+    },
+    {
+      "id": "non_square_aspect_ratio",
+      "description": "Main photo has non-square aspect ratio — warning for WB",
+      "files": {
+        "main": {"filename": "wide.jpg", "content_type": "image/jpeg", "size_bytes": 2097152, "dimensions": {"width": 3000, "height": 1500}}
+      },
+      "expected": {
+        "status": "warning",
+        "severity": "warning",
+        "can_approve": true,
+        "warning_code": "NON_SQUARE_ASPECT",
+        "message": "Non-square aspect ratio — marketplace may crop or reject"
+      }
+    },
+    {
+      "id": "png_with_transparency",
+      "description": "PNG with transparent background — warning for marketplaces",
+      "files": {
+        "main": {"filename": "product_transparent.png", "content_type": "image/png", "size_bytes": 1500000, "dimensions": {"width": 2000, "height": 2000}, "has_transparency": true}
+      },
+      "expected": {
+        "status": "warning",
+        "severity": "warning",
+        "can_approve": true,
+        "warning_code": "TRANSPARENT_BACKGROUND",
+        "message": "Image has transparent background — some marketplaces require solid background"
+      }
+    },
+    {
+      "id": "gif_not_accepted",
+      "description": "GIF file format — not accepted by any marketplace",
+      "files": {
+        "main": {"filename": "product.gif", "content_type": "image/gif", "size_bytes": 500000, "dimensions": {"width": 1200, "height": 1200}}
+      },
+      "expected": {
+        "status": "blocked",
+        "severity": "critical",
+        "can_approve": false,
+        "error_code": "INVALID_FILE_TYPE",
+        "message": "GIF format not accepted — use JPEG, PNG, or WebP",
+        "allowed_types": ["image/jpeg", "image/png", "image/webp"]
+      }
+    },
+    {
+      "id": "zero_byte_file",
+      "description": "Uploaded file is 0 bytes",
+      "files": {
+        "main": {"filename": "empty.jpg", "content_type": "image/jpeg", "size_bytes": 0}
+      },
+      "expected": {
+        "status": "blocked",
+        "severity": "critical",
+        "can_approve": false,
+        "error_code": "EMPTY_FILE",
+        "message": "Uploaded file is empty"
+      }
+    },
+    {
+      "id": "filename_with_special_chars",
+      "description": "Filename with special characters — should be sanitized",
+      "files": {
+        "main": {"filename": "product <main> & \"photo\".jpg", "content_type": "image/jpeg", "size_bytes": 2097152, "dimensions": {"width": 3000, "height": 3000}}
+      },
+      "expected": {
+        "status": "success",
+        "severity": "info",
+        "can_approve": true,
+        "sanitized_filename": "product_main_photo.jpg",
+        "warning_code": "FILENAME_SANITIZED"
+      }
+    }
+  ],
+  "marketplace_rules": {
+    "wildberries": {
+      "min_resolution": {"width": 900, "height": 900},
+      "max_file_size_bytes": 10485760,
+      "max_title_length": 60,
+      "max_additional_images": 10,
+      "max_reference_images": 5,
+      "accepted_formats": ["image/jpeg", "image/png", "image/webp"],
+      "prohibited_keywords": ["подделка", "копия", "реплика", "18+", "порно"],
+      "mandatory_fields": ["brand", "category", "name"],
+      "preferred_aspect_ratio": "1:1",
+      "background": "white_preferred"
+    },
+    "ozon": {
+      "min_resolution": {"width": 1000, "height": 1000},
+      "max_file_size_bytes": 20971520,
+      "max_title_length": 120,
+      "max_additional_images": 15,
+      "max_reference_images": 5,
+      "accepted_formats": ["image/jpeg", "image/png", "image/webp"],
+      "prohibited_keywords": ["реплика", "фейк"],
+      "mandatory_fields": ["brand"],
+      "preferred_aspect_ratio": "1:1",
+      "background": "white_required"
+    },
+    "wb_ozon_strictest": {
+      "min_resolution": {"width": 1000, "height": 1000},
+      "max_file_size_bytes": 10485760,
+      "max_title_length": 60,
+      "max_additional_images": 10,
+      "max_reference_images": 5,
+      "accepted_formats": ["image/jpeg", "image/png", "image/webp"],
+      "prohibited_keywords": ["подделка", "копия", "реплика", "18+", "порно", "фейк"],
+      "mandatory_fields": ["brand", "category", "name"],
+      "preferred_aspect_ratio": "1:1",
+      "background": "white_required"
+    }
+  },
+  "quality_thresholds": {
+    "excellent": {"min_score": 90, "severity": "pass"},
+    "good": {"min_score": 75, "max_score": 89, "severity": "pass"},
+    "acceptable": {"min_score": 60, "max_score": 74, "severity": "warning"},
+    "poor": {"min_score": 40, "max_score": 59, "severity": "warning"},
+    "critical": {"max_score": 39, "severity": "critical"}
+  },
+  "analysis_result_schema": {
+    "project_id": "uuid",
+    "uploaded_at": "iso8601",
+    "marketplaces": ["string"],
+    "main_image": {
+      "filename": "string",
+      "content_type": "string",
+      "size_bytes": "integer",
+      "dimensions": {"width": "integer", "height": "integer"},
+      "content_hash": "sha256",
+      "quality_score": "integer 0-100"
+    },
+    "additional_images": [{"filename": "string", "content_hash": "sha256"}],
+    "reference_images": [{"filename": "string", "content_hash": "sha256"}],
+    "brief": {"text": "string", "char_count": "integer"},
+    "analysis": {
+      "category": "string|null",
+      "attributes": ["string"],
+      "quality_flags": [
+        {"code": "string", "severity": "critical|warning|info", "message": "string"}
+      ],
+      "overall_quality_score": "integer 0-100",
+      "can_approve": "boolean",
+      "blocking_reasons": ["string"],
+      "warnings": ["string"]
+    },
+    "marketplace_validation": {
+      "wildberries": {"passes": "boolean", "failures": ["string"], "warnings": ["string"]},
+      "ozon": {"passes": "boolean", "failures": ["string"], "warnings": ["string"]}
+    }
+  },
+  "blocking_vs_warning_cases": [
+    {
+      "id": "critical_resolution_blocks",
+      "condition": "Image 50x50px — far below any marketplace minimum",
+      "severity": "critical",
+      "can_approve": false,
+      "should_block_pipeline": true,
+      "expected_error_code": "LOW_RESOLUTION"
+    },
+    {
+      "id": "warning_non_square_allows",
+      "condition": "Image 3000x1500px — valid quality but non-square",
+      "severity": "warning",
+      "can_approve": true,
+      "should_block_pipeline": false,
+      "expected_warning_code": "NON_SQUARE_ASPECT"
+    },
+    {
+      "id": "critical_corrupt_blocks",
+      "condition": "Corrupted/unreadable image file",
+      "severity": "critical",
+      "can_approve": false,
+      "should_block_pipeline": true,
+      "expected_error_code": "CORRUPTED_IMAGE"
+    },
+    {
+      "id": "warning_transparency_allows",
+      "condition": "PNG with transparent background",
+      "severity": "warning",
+      "can_approve": true,
+      "should_block_pipeline": false,
+      "expected_warning_code": "TRANSPARENT_BACKGROUND"
+    },
+    {
+      "id": "critical_wrong_type_blocks",
+      "condition": "Non-image file (GIF, EXE, PDF)",
+      "severity": "critical",
+      "can_approve": false,
+      "should_block_pipeline": true,
+      "expected_error_code": "INVALID_FILE_TYPE"
+    },
+    {
+      "id": "warning_empty_brief_allows",
+      "condition": "No brief text — image-only analysis possible",
+      "severity": "warning",
+      "can_approve": true,
+      "should_block_pipeline": false,
+      "expected_warning_code": "EMPTY_BRIEF"
+    },
+    {
+      "id": "critical_missing_main_blocks",
+      "condition": "No main photo uploaded",
+      "severity": "critical",
+      "can_approve": false,
+      "should_block_pipeline": true,
+      "expected_error_code": "MISSING_MAIN_PHOTO"
+    },
+    {
+      "id": "critical_too_large_blocks",
+      "condition": "File exceeds 10MB limit",
+      "severity": "critical",
+      "can_approve": false,
+      "should_block_pipeline": true,
+      "expected_error_code": "FILE_TOO_LARGE"
+    },
+    {
+      "id": "critical_too_many_refs_blocks",
+      "condition": "More than 5 reference images",
+      "severity": "critical",
+      "can_approve": false,
+      "should_block_pipeline": true,
+      "expected_error_code": "TOO_MANY_REFERENCES"
+    },
+    {
+      "id": "warning_low_quality_score_allows",
+      "condition": "Quality score 65 — acceptable but not great",
+      "severity": "warning",
+      "can_approve": true,
+      "should_block_pipeline": false,
+      "expected_quality_score": 65
+    }
+  ],
+  "regression_scenarios": [
+    {
+      "id": "wb_900px_should_pass_wb_fail_ozon",
+      "description": "900x900 image — passes WB min (900) but fails Ozon min (1000)",
+      "image": {"width": 900, "height": 900},
+      "wb_only": {"passes": true, "can_approve": true},
+      "ozon_only": {"passes": false, "can_approve": false, "reason": "below_min_resolution"},
+      "wb_ozon_combined": {"passes": false, "can_approve": false, "reason": "strictest_rule_ozon_resolution"}
+    },
+    {
+      "id": "1000px_passes_both",
+      "description": "1000x1000 image — meets both WB and Ozon minimums",
+      "image": {"width": 1000, "height": 1000},
+      "wb_only": {"passes": true, "can_approve": true},
+      "ozon_only": {"passes": true, "can_approve": true},
+      "wb_ozon_combined": {"passes": true, "can_approve": true}
+    },
+    {
+      "id": "wb_keyword_not_in_ozon",
+      "description": "Keyword 'копия' — prohibited by WB but not Ozon",
+      "text": "копия известного бренда",
+      "wb_only": {"flagged": true, "severity": "critical", "can_approve": false},
+      "ozon_only": {"flagged": false, "can_approve": true},
+      "wb_ozon_combined": {"flagged": true, "severity": "critical", "can_approve": false, "reason": "strictest_rule_wb_keyword"}
+    },
+    {
+      "id": "ozon_keyword_not_in_wb",
+      "description": "Keyword 'фейк' — prohibited by Ozon but not WB",
+      "text": "не фейк, оригинал",
+      "wb_only": {"flagged": false, "can_approve": true},
+      "ozon_only": {"flagged": true, "severity": "critical", "can_approve": false},
+      "wb_ozon_combined": {"flagged": true, "severity": "critical", "can_approve": false, "reason": "strictest_rule_ozon_keyword"}
+    },
+    {
+      "id": "both_prohibit_replika",
+      "description": "Keyword 'реплика' — prohibited by both WB and Ozon",
+      "text": "реплика премиум качества",
+      "wb_only": {"flagged": true, "severity": "critical", "can_approve": false},
+      "ozon_only": {"flagged": true, "severity": "critical", "can_approve": false},
+      "wb_ozon_combined": {"flagged": true, "severity": "critical", "can_approve": false, "reason": "both_marketplaces_prohibit"}
+    },
+    {
+      "id": "wb_stricter_title_length",
+      "description": "Title 80 chars — exceeds WB limit (60) but within Ozon (120)",
+      "title_length": 80,
+      "wb_only": {"passes": false, "can_approve": false, "reason": "title_too_long"},
+      "ozon_only": {"passes": true, "can_approve": true},
+      "wb_ozon_combined": {"passes": false, "can_approve": false, "reason": "strictest_rule_wb_title_length"}
+    },
+    {
+      "id": "wb_mandatory_category",
+      "description": "Missing 'category' field — required by WB but not Ozon",
+      "missing_field": "category",
+      "wb_only": {"passes": false, "can_approve": false, "reason": "missing_mandatory_field"},
+      "ozon_only": {"passes": true, "can_approve": true},
+      "wb_ozon_combined": {"passes": false, "can_approve": false, "reason": "strictest_rule_wb_mandatory_field"}
+    }
+  ]
+}

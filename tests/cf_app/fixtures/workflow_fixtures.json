@@ -1,0 +1,236 @@
+{
+  "workflow_stages": [
+    {"stage": 0, "name": "input_analysis", "accepts": ["main_image", "additional_images", "reference_images", "brief"], "outputs": ["category", "attributes", "quality_flags"]},
+    {"stage": 1, "name": "copy_planning", "accepts": ["brief", "category", "attributes"], "outputs": ["titles", "descriptions", "bullet_points"]},
+    {"stage": 2, "name": "scene_planning", "accepts": ["copy", "attributes"], "outputs": ["scene_definitions", "scene_order"]},
+    {"stage": 3, "name": "design_concepts", "accepts": ["scenes", "copy"], "outputs": ["design_variants", "color_palettes", "typography"]},
+    {"stage": 4, "name": "final_generation", "accepts": ["approved_design", "approved_copy", "approved_scenes"], "outputs": ["final_cards"]},
+    {"stage": 5, "name": "review", "accepts": ["final_cards"], "outputs": ["approval", "comments", "regeneration_requests"]},
+    {"stage": 6, "name": "export", "accepts": ["approved_final_cards"], "outputs": ["marketplace_export_package"]}
+  ],
+  "sample_brief_payloads": [
+    {
+      "marketplaces": ["wildberries"],
+      "product_name": "Premium Wireless Headphones",
+      "brief_text": "Over-ear noise-cancelling headphones with 40h battery life. Target audience: students and remote workers. Key selling points: active noise cancellation, long battery, comfortable for all-day wear.",
+      "main_image": {"filename": "headphones_front.jpg", "dimensions": "3000x3000", "format": "jpeg"},
+      "additional_images": ["headphones_side.jpg", "headphones_folded.jpg", "headphones_case.jpg"],
+      "reference_images": ["competitor_A_listing.jpg", "premium_brand_style.jpg"]
+    },
+    {
+      "marketplaces": ["wildberries", "ozon"],
+      "product_name": "Organic Green Tea Matcha",
+      "brief_text": "Ceremonial-grade matcha from Uji, Kyoto. 100g tin. Key selling points: organic certified, stone-ground, vibrant green color, no additives.",
+      "main_image": {"filename": "matcha_tin.jpg", "dimensions": "2000x2000", "format": "jpeg"},
+      "additional_images": ["matcha_powder.jpg", "matcha_prepared.jpg", "matcha_certification.jpg"],
+      "reference_images": ["tea_brand_premium.jpg"],
+      "strictest_rules": true
+    }
+  ],
+  "copy_planning_outputs": {
+    "title": "Premium Wireless Headphones ANC — 40h Battery, Noise Cancelling, Bluetooth 5.3",
+    "description": "Experience studio-quality sound with our premium wireless headphones. Featuring advanced active noise cancellation, 40-hour battery life, and ultra-comfortable memory foam ear cushions designed for all-day wear.",
+    "bullet_points": [
+      "Active Noise Cancellation — blocks 98% of ambient noise",
+      "40-Hour Battery — all-day listening without recharge",
+      "Bluetooth 5.3 — stable connection up to 15m range",
+      "Memory Foam Cushions — comfortable for extended wear",
+      "Foldable Design — compact for travel with included case"
+    ]
+  },
+  "scene_definitions": [
+    {"scene_id": 1, "type": "hero", "description": "Front-facing product shot with clean background", "copy_elements": ["title", "key_benefit"]},
+    {"scene_id": 2, "type": "feature", "description": "Side profile showing ANC microphone array", "copy_elements": ["bullet_1"]},
+    {"scene_id": 3, "type": "usage", "description": "Person using headphones while working on laptop", "copy_elements": ["bullet_2", "bullet_3"]},
+    {"scene_id": 4, "type": "detail", "description": "Close-up of memory foam cushions", "copy_elements": ["bullet_4"]},
+    {"scene_id": 5, "type": "lifestyle", "description": "Headphones folded in travel case", "copy_elements": ["bullet_5"]},
+    {"scene_id": 6, "type": "comparison", "description": "Size comparison diagram", "copy_elements": []},
+    {"scene_id": 7, "type": "specs", "description": "Technical specifications panel", "copy_elements": []},
+    {"scene_id": 8, "type": "package", "description": "What's in the box", "copy_elements": []}
+  ],
+  "design_concept_schema": {
+    "variant_id": "concept_a",
+    "color_palette": {"primary": "#1a1a2e", "secondary": "#16213e", "accent": "#e94560", "background": "#ffffff"},
+    "typography": {"title_font": "Roboto Bold", "body_font": "Inter Regular"},
+    "style": "minimalist_premium",
+    "layout_template": "hero_left_text_right",
+    "generated_card_urls": ["card_1.png", "card_2.png", "card_3.png", "card_4.png", "card_5.png", "card_6.png", "card_7.png", "card_8.png"]
+  },
+  "final_generation_artifact": {
+    "project_id": "placeholder",
+    "cards": [
+      {"card_id": 1, "scene_id": 1, "design_variant": "concept_a", "status": "generated", "image_url": "placeholder", "revision": 1},
+      {"card_id": 2, "scene_id": 2, "design_variant": "concept_a", "status": "generated", "image_url": "placeholder", "revision": 1},
+      {"card_id": 3, "scene_id": 3, "design_variant": "concept_a", "status": "generated", "image_url": "placeholder", "revision": 1},
+      {"card_id": 4, "scene_id": 4, "design_variant": "concept_a", "status": "generated", "image_url": "placeholder", "revision": 1},
+      {"card_id": 5, "scene_id": 5, "design_variant": "concept_a", "status": "generated", "image_url": "placeholder", "revision": 1},
+      {"card_id": 6, "scene_id": 6, "design_variant": "concept_a", "status": "generated", "image_url": "placeholder", "revision": 1},
+      {"card_id": 7, "scene_id": 7, "design_variant": "concept_a", "status": "generated", "image_url": "placeholder", "revision": 1},
+      {"card_id": 8, "scene_id": 8, "design_variant": "concept_a", "status": "generated", "image_url": "placeholder", "revision": 1}
+    ],
+    "traceability": {
+      "prompt_version": "v2.1",
+      "workflow_version": "v1.0",
+      "seed": 42,
+      "model_id": "image-gen-v3",
+      "reference_hashes": ["sha256:abc123..."]
+    }
+  },
+  "regeneration_scenarios": [
+    {"target": "whole_stage", "stage": "design_concepts", "expected": "8 new cards, new revision chain"},
+    {"target": "single_card", "card_id": 3, "expected": "1 new card revision, siblings unchanged"},
+    {"target": "element", "card_id": 1, "element": "text_overlay", "expected": "only text regenerated, background and layout preserved"}
+  ],
+  "export_package": {
+    "format": "zip",
+    "contents": [
+      {"file": "cards/card_1.png", "resolution": "3000x3000"},
+      {"file": "cards/card_2.png", "resolution": "3000x3000"},
+      {"file": "metadata.json", "fields": ["title", "description", "bullet_points", "category", "attributes"]}
+    ],
+    "marketplace_specific": {
+      "wildberries": {"max_files": 10, "max_size_mb": 10, "formats": ["png", "jpg"]},
+      "ozon": {"max_files": 15, "max_size_mb": 20, "formats": ["png", "jpg", "webp"]}
+    }
+  },
+  "error_flow_scenarios": [
+    {
+      "scenario": "stage_transition_unapproved_predecessor",
+      "action": "approve_stage_2",
+      "state": {"stage_0": "approved", "stage_1": "draft", "stage_2": "pending"},
+      "expected_status": 409,
+      "expected_error": "Cannot approve stage 2 — stage 1 (copy_planning) is still in draft",
+      "blocking_stage_id": 1
+    },
+    {
+      "scenario": "regenerate_unapproved_stage",
+      "action": "regenerate_stage",
+      "state": {"stage_3": "draft"},
+      "expected_status": 400,
+      "expected_error": "Cannot regenerate unapproved stage without explicit force flag"
+    },
+    {
+      "scenario": "export_unapproved_project",
+      "action": "export_project",
+      "state": {"stages_0_through_4": "approved", "stage_5_review": "pending"},
+      "expected_status": 403,
+      "expected_error": "Export blocked — stage 5 (review) not yet approved"
+    },
+    {
+      "scenario": "export_compliance_failure",
+      "action": "export_project",
+      "state": {"all_stages_approved": true, "compliance": {"score": 35, "severity": "critical", "failures": 3}},
+      "expected_status": 403,
+      "expected_error": "Export blocked — 3 critical compliance failures"
+    },
+    {
+      "scenario": "regenerate_invalid_element",
+      "action": "regenerate_element",
+      "params": {"card_id": 1, "element": "nonexistent_field"},
+      "expected_status": 422,
+      "expected_error": "Invalid element 'nonexistent_field'. Valid elements: text_overlay, background, badge, icon, position"
+    },
+    {
+      "scenario": "project_not_found",
+      "action": "get_project",
+      "params": {"project_id": "00000000-0000-0000-0000-000000000000"},
+      "expected_status": 404
+    },
+    {
+      "scenario": "batch_final_partial_approval",
+      "action": "batch_final",
+      "state": {"stages_0_through_2_approved": true, "stage_3_concepts": "pending", "stage_4_final": "not_started"},
+      "expected_status": 409,
+      "expected_error": "Cannot batch final — stage 3 (design_concepts) not yet approved",
+      "unapproved_stages": [3]
+    }
+  ],
+  "partial_approval_scenarios": [
+    {
+      "scenario": "half_cards_approved_in_stage",
+      "stage": "final_generation",
+      "cards": [
+        {"card_id": 1, "status": "approved", "revision": 1},
+        {"card_id": 2, "status": "approved", "revision": 1},
+        {"card_id": 3, "status": "pending_review", "revision": 1},
+        {"card_id": 4, "status": "pending_review", "revision": 1},
+        {"card_id": 5, "status": "approved", "revision": 1},
+        {"card_id": 6, "status": "draft", "revision": 1, "note": "still editing"},
+        {"card_id": 7, "status": "approved", "revision": 1},
+        {"card_id": 8, "status": "approved", "revision": 1}
+      ],
+      "expected_stage_status": "partially_approved",
+      "approved_count": 5,
+      "pending_count": 2,
+      "draft_count": 1,
+      "export_allowed": false,
+      "reason": "Not all cards in stage 4 are approved"
+    },
+    {
+      "scenario": "all_cards_approved_export_ready",
+      "stage": "final_generation",
+      "cards": [
+        {"card_id": 1, "status": "approved", "revision": 1},
+        {"card_id": 2, "status": "approved", "revision": 1},
+        {"card_id": 3, "status": "approved", "revision": 1},
+        {"card_id": 4, "status": "approved", "revision": 1},
+        {"card_id": 5, "status": "approved", "revision": 1},
+        {"card_id": 6, "status": "approved", "revision": 1},
+        {"card_id": 7, "status": "approved", "revision": 1},
+        {"card_id": 8, "status": "approved", "revision": 1}
+      ],
+      "expected_stage_status": "approved",
+      "approved_count": 8,
+      "export_allowed": true,
+      "compliance_required": true
+    },
+    {
+      "scenario": "regenerate_single_approved_card",
+      "action": "regenerate_card",
+      "params": {"card_id": 3},
+      "prior_state": {"card_3_status": "approved", "card_3_revision": 1},
+      "expected": {
+        "card_3_status": "pending_review",
+        "card_3_revision": 2,
+        "all_other_cards_unchanged": true,
+        "stage_status_downgraded": "partially_approved"
+      }
+    }
+  ],
+  "review_action_scenarios": [
+    {
+      "scenario": "approve_with_warning_comment",
+      "action": "approve_stage",
+      "params": {"stage": "copy_planning", "comment": "Title too long for Ozon — adjust before export"},
+      "prior_state": {"stage_status": "pending_review"},
+      "expected": {
+        "stage_status": "approved",
+        "warning_attached": true,
+        "downstream_unblocked": true,
+        "export_flag": "warning_pending"
+      }
+    },
+    {
+      "scenario": "reject_with_required_changes",
+      "action": "comment_stage",
+      "params": {"stage": "design_concepts", "comment": "Color palette doesn't match brand — need warmer tones", "requires_regenerate": true},
+      "prior_state": {"stage_status": "pending_review"},
+      "expected": {
+        "stage_status": "needs_revision",
+        "regeneration_required": true,
+        "downstream_blocked": true
+      }
+    },
+    {
+      "scenario": "approve_single_card_in_stage",
+      "action": "approve_card",
+      "params": {"card_id": 5},
+      "prior_state": {"card_5_status": "pending_review", "stage_status": "partially_approved"},
+      "expected": {
+        "card_5_status": "approved",
+        "card_5_revision": 1,
+        "card_5_approved_at": "timestamp"
+      }
+    }
+  ]
+}
