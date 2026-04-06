@@ -53,6 +53,14 @@ import {
   validateProjectForExport,
   getCreditsForPlan,
   generateQualityReport,
+  generateCacheKey,
+  hashInput,
+  InMemoryGenerationCache,
+  CacheHitTracker,
+  type GenerationCacheKey,
+  planBatches,
+  resolveResolution,
+  estimateJobCreditCost,
 } from '@cardflow/core';
 import {
   createApproval,
@@ -125,6 +133,17 @@ import {
   getCreditBalance,
   getLedgerEntries,
   getCreditsUsed,
+  createBatchGroup,
+  addBatchMember,
+  updateBatchGroupStatus,
+  completeBatchMember,
+  getBatchGroupWithMembers,
+  getBatchGroupsByProject,
+  getCachedGeneration,
+  storeCachedGeneration,
+  recordCacheHit,
+  purgeExpiredCache,
+  getCacheStats,
 } from '@cardflow/db';
 import { createStorageClient } from '@cardflow/storage';
 
@@ -1762,8 +1781,6 @@ app.post('/v1/billing/:projectId/grant', async (request, reply) => {
   return entry;
 });
 
-// Seed compliance rules on startup
-await seedComplianceRules(pool, getAllDefaultRules());
 
 const address = await app.listen({ port: env.port, host: '0.0.0.0' });
 app.log.info(`API listening on ${address}`);
@@ -1897,3 +1914,75 @@ app.post('/v1/generation/resolve-resolution', async (request, reply) => {
 
   return result;
 });
+
+// ========================================================================
+// Task db4252d5 — Caching logic endpoints
+// ========================================================================
+
+const genCache = new InMemoryGenerationCache();
+const cacheTracker = new CacheHitTracker();
+
+// Cache lookup: try cache first, fallback to generator
+app.post('/v1/generation/cached', async (request, reply) => {
+  const { promptHash, modelId, seed, resolution, stylePreset, negativePrompt } = request.body as {
+    promptHash: string;
+    modelId: string;
+    seed?: number;
+    resolution?: string;
+    stylePreset?: string;
+    negativePrompt?: string;
+  };
+
+  const input: GenerationCacheKey = {
+    promptHash,
+    modelId,
+    seed,
+    resolution,
+    stylePreset,
+    negativePromptHash: negativePrompt ? hashInput(negativePrompt) : undefined,
+  };
+
+  const cacheKey = generateCacheKey(input);
+
+  // Check in-memory cache
+  let cached = genCache.get(cacheKey);
+
+  // Check persistent cache if not in memory
+  if (!cached) {
+    cached = await getCachedGeneration(pool, cacheKey);
+    if (cached) {
+      const hitCents = estimateJobCreditCost({ width: parseInt(resolution?.split('x')[0] ?? '1024'), height: parseInt(resolution?.split('x')[1] ?? '1024') }) * 3;
+      cacheTracker.registerHit(hitCents);
+      return { source: 'persistent_cache', cacheKey, data: cached };
+    }
+  }
+
+  if (cached) {
+    cacheTracker.registerHit();
+    return { source: 'in_memory_cache', cacheKey, data: cached };
+  }
+
+  cacheTracker.registerMiss();
+  reply.code(404);
+  return { source: 'miss', cacheKey };
+});
+
+app.get('/v1/generation/cache/stats', async (request, reply) => {
+  const inMem = genCache.getStats();
+  const persistent = await getCacheStats(pool);
+  const trackerStats = cacheTracker.getStats();
+
+  return {
+    inMemoryCache: inMem,
+    persistentCache: persistent,
+    hitTracker: trackerStats,
+  };
+});
+
+app.post('/v1/generation/cache/purge', async (request, reply) => {
+  const purged = await purgeExpiredCache(pool);
+  const inMemCleared = genCache.size;
+  genCache.clear();
+  return { purgedPersistent: purged, clearedInMemory: inMemCleared };
+});
+

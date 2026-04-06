@@ -1749,3 +1749,89 @@ export async function getBatchGroupsByProject(
   );
   return result.rows;
 }
+
+export async function getCachedGeneration(pool: Pool, cacheKey: string) {
+  const result = await pool.query(
+    `SELECT * FROM generation_cache
+     WHERE cache_key = $1 AND expires_at > now()
+     LIMIT 1`,
+    [cacheKey],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+
+  // Bump hit count and last_accessed
+  await pool.query(
+    `UPDATE generation_cache
+     SET hit_count = hit_count + 1, last_accessed_at = now()
+     WHERE cache_key = $1`,
+    [cacheKey],
+  );
+
+  return row;
+}
+
+export async function storeCachedGeneration(
+  pool: Pool,
+  input: {
+    cacheKey: string;
+    resultId: string;
+    projectId?: string;
+    modelId: string;
+    promptHash: string;
+    outputRefs: string[];
+    ttlSeconds?: number;
+  },
+) {
+  const result = await pool.query(
+    `INSERT INTO generation_cache (
+        cache_key, result_id, project_id, model_id, prompt_hash, output_refs,
+        expires_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, now() + (COALESCE($7, 86400) || ' seconds')::interval)
+      ON CONFLICT (cache_key) DO UPDATE SET
+        hit_count = generation_cache.hit_count,
+        last_accessed_at = now()
+      RETURNING *`,
+    [
+      input.cacheKey,
+      input.resultId,
+      input.projectId ?? null,
+      input.modelId,
+      input.promptHash,
+      JSON.stringify(input.outputRefs),
+      input.ttlSeconds ?? 86400,
+    ],
+  );
+  return result.rows[0];
+}
+
+export async function recordCacheHit(pool: Pool, cacheKey: string, costSavedCents: number) {
+  await pool.query(
+    `UPDATE generation_cache
+     SET cost_saved_cents = cost_saved_cents + $2,
+         hit_count = hit_count + 1,
+         last_accessed_at = now()
+     WHERE cache_key = $1`,
+    [cacheKey, costSavedCents],
+  );
+}
+
+export async function purgeExpiredCache(pool: Pool) {
+  const result = await pool.query(
+    `DELETE FROM generation_cache WHERE expires_at < now() RETURNING id`,
+  );
+  return result.rows.length;
+}
+
+export async function getCacheStats(pool: Pool) {
+  const result = await pool.query(
+    `SELECT
+       COUNT(*) AS total_entries,
+       COUNT(CASE WHEN expires_at < now() THEN 1 END) AS expired_entries,
+       COALESCE(SUM(cost_saved_cents), 0) AS total_cost_saved_cents,
+       COALESCE(SUM(hit_count), 0) AS total_hits
+     FROM generation_cache`,
+  );
+  return result.rows[0];
+}

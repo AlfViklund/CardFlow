@@ -991,3 +991,37 @@ export {
   type BatchPlan,
   type BatchStatus,
 } from './batching';
+
+// ---------------------------------------------------------------------------
+// Task db4252d5 — Caching logic for AI generation deduplication
+// ---------------------------------------------------------------------------
+
+export {
+  generateCacheKey,
+  hashInput,
+  InMemoryGenerationCache,
+  CacheHitTracker,
+  DEFAULT_CACHE_CONFIG,
+  type GenerationCacheKey,
+  type CachedGenerationResult,
+  type CacheConfig,
+  type CacheHitStats,
+} from './cache';
+
+// ---------------------------------------------------------------------------
+// Task 1e153893 — Observability query API for dashboards
+// ---------------------------------------------------------------------------
+
+export {
+  dateRangeForPeriod,
+  generateDateLabels,
+  formatCents,
+  calculateBudgetPct,
+  forecastMonthly,
+  generateBudgetAlerts,
+  type UsageQuery,
+  type CostQuery,
+  type UsageResponse,
+  type CostResponse,
+  type EventTraceResponse,
+} from './observability';
