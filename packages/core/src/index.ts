@@ -1025,3 +1025,41 @@ export {
   type CostResponse,
   type EventTraceResponse,
 } from './observability';
+
+// ---------------------------------------------------------------------------
+// Task d403c990 — Cost-control alerts and budget guardrails
+// ---------------------------------------------------------------------------
+
+export {
+  checkBudgetCap,
+  checkCreditLevel,
+  generateSpendAlerts,
+  canCreateJob,
+  DEFAULT_ALERT_CONFIG,
+  type AlertConfig,
+  type AlertType,
+  type AlertSeverity,
+  type AlertScope,
+  type Alert,
+} from './alerts';
+
+// ---------------------------------------------------------------------------
+// Task 9f473bcd — Credit consumption, top-up, renewal engine
+// ---------------------------------------------------------------------------
+
+export {
+  validateConsumption,
+  processTopUp,
+  processRenewal,
+  shouldExpireCredits,
+  calculateExpiryDate,
+  calculateNextRenewal,
+  shouldRenew,
+  type RenewalFrequency,
+  type TopUpMethod,
+  type SubscriptionRenewal,
+  type TopUpRequest,
+  type ConsumptionRequest,
+  type CreditLedgerEntry,
+  type SubscriptionSnapshot,
+} from './credit-engine';

@@ -1835,3 +1835,184 @@ export async function getCacheStats(pool: Pool) {
   );
   return result.rows[0];
 }
+
+// ---------------------------------------------------------------------------
+// Task d403c990 — Alerts DB layer
+// ---------------------------------------------------------------------------
+
+export async function upsertAlertConfig(
+  pool: Pool,
+  input: {
+    projectId: string;
+    dailyBudgetCents?: number;
+    weeklyBudgetCents?: number;
+    monthlyBudgetCents?: number;
+    lowCreditThresholdPct?: number;
+    criticalCreditThresholdPct?: number;
+    hardSpendCapCents?: number;
+  },
+) {
+  const result = await pool.query(
+    `INSERT INTO alert_configs (project_id, daily_budget_cents, weekly_budget_cents,
+       monthly_budget_cents, low_credit_threshold_pct, critical_credit_threshold_pct,
+       hard_spend_cap_cents)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (project_id) DO UPDATE SET
+       daily_budget_cents = $2, weekly_budget_cents = $3, monthly_budget_cents = $4,
+       low_credit_threshold_pct = $5, critical_credit_threshold_pct = $6,
+       hard_spend_cap_cents = $7, updated_at = now()
+     RETURNING *`,
+    [
+      input.projectId,
+      input.dailyBudgetCents ?? 1000,
+      input.weeklyBudgetCents ?? 5000,
+      input.monthlyBudgetCents ?? 20000,
+      input.lowCreditThresholdPct ?? 20,
+      input.criticalCreditThresholdPct ?? 5,
+      input.hardSpendCapCents ?? 0,
+    ],
+  );
+  return result.rows[0];
+}
+
+export async function getAlertConfig(pool: Pool, projectId: string) {
+  const result = await pool.query(
+    'SELECT * FROM alert_configs WHERE project_id = $1',
+    [projectId],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function insertAlertNotification(
+  pool: Pool,
+  input: {
+    projectId: string;
+    type: string;
+    severity: string;
+    title: string;
+    message: string;
+  },
+) {
+  const result = await pool.query(
+    `INSERT INTO alert_notifications (project_id, type, severity, title, message)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [input.projectId, input.type, input.severity, input.title, input.message],
+  );
+  return result.rows[0];
+}
+
+export async function getUnseenAlerts(pool: Pool, projectId: string) {
+  const result = await pool.query(
+    `SELECT * FROM alert_notifications
+     WHERE project_id = $1 AND seen = false
+     ORDER BY created_at DESC`,
+    [projectId],
+  );
+  return result.rows;
+}
+
+export async function markAlertsSeen(pool: Pool, projectId: string) {
+  const result = await pool.query(
+    `UPDATE alert_notifications SET seen = true
+     WHERE project_id = $1 AND seen = false`,
+    [projectId],
+  );
+  return result.rowCount;
+}
+
+// ---------------------------------------------------------------------------
+// Task 9f473bcd — Credit engine DB layer
+// ---------------------------------------------------------------------------
+
+async function _getCreditBalance(pool: Pool, subscriptionId: string): Promise<number> {
+  const result = await pool.query(
+    `SELECT COALESCE(SUM(amount), 0) AS balance FROM credits_ledger WHERE subscription_id = $1`,
+    [subscriptionId],
+  );
+  return Number(result.rows[0]?.balance ?? 0);
+}
+
+async function _getCreditsUsed(pool: Pool, subscriptionId: string): Promise<number> {
+  const result = await pool.query(
+    `SELECT COALESCE(SUM(ABS(amount)), 0) AS consumed FROM credits_ledger WHERE subscription_id = $1 AND type = 'consumption'`,
+    [subscriptionId],
+  );
+  return Number(result.rows[0]?.consumed ?? 0);
+}
+
+export async function consumeCredits(
+  pool: Pool,
+  input: {
+    subscriptionId: string;
+    credits: number;
+    jobId?: string;
+    description?: string;
+  },
+) {
+  const balanceBefore = await _getCreditBalance(pool, input.subscriptionId);
+  if (balanceBefore < input.credits) {
+    return { allowed: false, reason: 'Insufficient credits', balance: balanceBefore };
+  }
+
+  const entry = await pool.query(
+    `INSERT INTO credits_ledger (subscription_id, type, amount, reference)
+     VALUES ($1, 'consumption', $2, $3) RETURNING *`,
+    [input.subscriptionId, -input.credits, input.jobId || input.description || null],
+  );
+
+  await pool.query(
+    `UPDATE subscriptions SET credits_used = credits_used + $1, updated_at = now()
+     WHERE id = $2`,
+    [input.credits, input.subscriptionId],
+  );
+
+  return { allowed: true, entry: entry.rows[0], newBalance: balanceBefore - input.credits };
+}
+
+export async function topUpCredits(
+  pool: Pool,
+  input: {
+    subscriptionId: string;
+    amount: number;
+    method?: string;
+    reason?: string;
+  },
+) {
+  const balanceBefore = await _getCreditBalance(pool, input.subscriptionId);
+  const entry = await pool.query(
+    `INSERT INTO credits_ledger (subscription_id, type, amount, reference)
+     VALUES ($1, 'purchase', $2, $3) RETURNING *`,
+    [input.subscriptionId, input.amount, input.reason ?? `top-up via ${input.method ?? 'manual'}`],
+  );
+  return { entry: entry.rows[0], newBalance: balanceBefore + input.amount };
+}
+
+export async function getSubscriptionSnapshot(
+  pool: Pool,
+  subscriptionId: string,
+) {
+  const sub = await pool.query(
+    'SELECT * FROM subscriptions WHERE id = $1',
+    [subscriptionId],
+  );
+  if (sub.rows.length === 0) return null;
+
+  const row = sub.rows[0];
+  const balance = await _getCreditBalance(pool, subscriptionId);
+  const consumed = await _getCreditsUsed(pool, subscriptionId);
+  const pct = row.credits_per_period > 0 ? Math.round((balance / row.credits_per_period) * 100) : 0;
+
+  return {
+    subscriptionId,
+    plan: row.plan,
+    status: row.status,
+    currentBalance: balance,
+    creditsPerPeriod: row.credits_per_period,
+    consumedThisPeriod: consumed,
+    periodEnd: row.period_end,
+    autoRenew: row.status === 'active',
+    expiryWarning: pct <= 5,
+    lowCreditWarning: pct <= 20,
+  };
+}
