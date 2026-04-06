@@ -49,6 +49,8 @@ import {
   type ComplianceReport,
   analyzeQuality,
   makeGatingDecision,
+  validateExportCard,
+  validateProjectForExport,
   generateQualityReport,
 } from '@cardflow/core';
 import {
@@ -126,6 +128,10 @@ const env = {
   s3AccessKey: process.env.S3_ACCESS_KEY ?? 'cardflow',
   s3SecretKey: process.env.S3_SECRET_KEY ?? 'cardflowsecret',
   s3Bucket: process.env.S3_BUCKET ?? defaultStorageBucket,
+  // Step 0 quality gating thresholds (configurable)
+  step0QualityBlockThreshold: Number(process.env.STEP0_QUALITY_BLOCK_THRESHOLD ?? 40),
+  step0QualityWarnThreshold: Number(process.env.STEP0_QUALITY_WARN_THRESHOLD ?? 60),
+  step0QualityEnabled: String(process.env.STEP0_QUALITY_ENABLED ?? 'true') === 'true',
 };
 
 const pool = createPool(env.databaseUrl);
@@ -917,6 +923,41 @@ app.post('/v1/step0/ingest', async (request, reply) => {
   }
   await batchCreateValidationRecords(pool, ingestion.id, validationRecords);
 
+  // Task f99f32fe — Step 0 quality gating decision
+  let qualityGating: Record<string, unknown> | null = null;
+  if (env.step0QualityEnabled && mainResult.info.width) {
+    const qualityResult = analyzeQuality(
+      {
+        width: mainResult.info.width as number,
+        height: mainResult.info.height as number,
+        fileSizeBytes: mainResult.info.byteSize as number,
+        mimeType: mainResult.info.mimeType as string,
+        brief: parsed.brief,
+      },
+      marketplaces,
+    );
+
+    const gatingResult = makeGatingDecision(
+      qualityResult.overallScore,
+      qualityResult.risks,
+      marketplaces,
+    );
+
+    qualityGating = {
+      overallScore: qualityResult.overallScore,
+      gatingDecision: gatingResult.decision,
+      reason: gatingResult.reason,
+      dimensionScores: qualityResult.dimensionScores,
+      risks: qualityResult.risks,
+    };
+
+    // Update ingestion with quality gating result
+    await pool.query(
+      `UPDATE step0_ingestions SET metadata = JSONB_SET(COALESCE(metadata, '{}'::jsonb), '{quality_gating}', $1) WHERE id = $2`,
+      [qualityGating, ingestion.id],
+    );
+  }
+
   reply.code(201);
   return {
     ingestionId: ingestion.id,
@@ -928,6 +969,7 @@ app.post('/v1/step0/ingest', async (request, reply) => {
     additionalAssetIds,
     referenceAssetIds,
     totalImages,
+    qualityGating,
   };
 });
 

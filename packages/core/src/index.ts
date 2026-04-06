@@ -883,3 +883,51 @@ export {
   type UsageSnapshot,
   type RateLimitEntry,
 } from './cost-controls';
+
+// ---------------------------------------------------------------------------
+// Task f70b601f — Provider abstraction for image generation
+// ---------------------------------------------------------------------------
+
+export {
+  ProviderRegistry,
+  ProviderClient,
+  CostMeter,
+  calculateBackoff,
+  generateTraceId,
+  buildTraceRecord,
+  defaultProviderConfigs,
+  type ProviderName,
+  type ProviderConfig,
+  type GenerationRequest,
+  type GenerationResult,
+  type CostRecord,
+} from './provider-abstraction';
+
+// ---------------------------------------------------------------------------
+// Task a057a6c7 — Text/layout rendering engine
+// ---------------------------------------------------------------------------
+
+export {
+  resolvePixelValue,
+  resolveBox,
+  contrastRatio,
+  parseHexColor,
+  checkTextContrast,
+  wrapText,
+  truncateToLines,
+  validateLayoutSpec,
+  mergeLayoutSpec,
+  buildMarketplaceLayout,
+  wbLayoutPreset,
+  ozonLayoutPreset,
+  default2KPreset,
+  type LayoutSpec,
+  type TextBlock,
+  type BadgeOverlay,
+  type IconOverlay,
+  type ImageOverlay,
+  type LayoutBox,
+  type PixelValue,
+  type OutputFormat,
+  type LayoutValidationIssue,
+} from './layout-rendering';
