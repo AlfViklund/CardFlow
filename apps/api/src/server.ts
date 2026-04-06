@@ -115,6 +115,15 @@ import {
   listComplianceValidationsByProject,
   listComplianceValidationsByCard,
   updateProjectExportBlock,
+  getSubscriptionByProject,
+  createSubscription,
+  updateSubscriptionStatus,
+  upgradeSubscription,
+  cancelSubscription,
+  recordCreditTransaction,
+  getCreditBalance,
+  getLedgerEntries,
+  getCreditsUsed,
 } from '@cardflow/db';
 import { createStorageClient } from '@cardflow/storage';
 
@@ -1674,6 +1683,82 @@ app.post('/v1/quality/analyze', async (request, reply) => {
     gatingResult,
     report: generateQualityReport(qualityResult, mp),
   };
+});
+
+// ========================================================================
+// Task cbb08985 — Billing endpoints
+// ========================================================================
+
+app.get('/v1/billing/:projectId', async (request, reply) => {
+  const { projectId } = request.params as { projectId: string };
+  const subscription = await getSubscriptionByProject(pool, projectId);
+  if (!subscription) {
+    reply.code(404);
+    return { error: 'No subscription configured' };
+  }
+  const balance = await getCreditBalance(pool, subscription.id);
+  const consumed = await getCreditsUsed(pool, subscription.id);
+  return { subscription, balance, consumed };
+});
+
+app.get('/v1/billing/:projectId/ledger', async (request, reply) => {
+  const { projectId } = request.params as { projectId: string };
+  const { limit, offset } = request.query as { limit?: string; offset?: string };
+  const subscription = await getSubscriptionByProject(pool, projectId);
+  if (!subscription) { reply.code(404); return { error: 'No subscription' }; }
+  const entries = await getLedgerEntries(
+    pool,
+    subscription.id,
+    Number(limit) || 100,
+    Number(offset) || 0,
+  );
+  return { projectId, ledger: entries };
+});
+
+app.post('/v1/billing/:projectId/subscription', async (request, reply) => {
+  const { projectId } = request.params as { projectId: string };
+  const body = request.body as Record<string, unknown>;
+  const existing = await getSubscriptionByProject(pool, projectId);
+  if (existing) { reply.code(409); return { error: 'Subscription exists', subscription: existing }; }
+  const subscription = await createSubscription(pool, {
+    projectId,
+    plan: (body.plan as string) ?? 'free',
+    creditsPerPeriod: (body.creditsPerPeriod as number) ?? 20,
+  });
+  reply.code(201);
+  return subscription;
+});
+
+app.post('/v1/billing/:projectId/upgrade', async (request, reply) => {
+  const { projectId } = request.params as { projectId: string };
+  const { plan } = request.body as { plan: string };
+  if (!plan) { reply.code(400); return { error: 'Plan required' }; }
+  const subscription = await getSubscriptionByProject(pool, projectId);
+  if (!subscription) { reply.code(404); return { error: 'No subscription' }; }
+  const credits = getCreditsForPlan(plan as any);
+  const updated = await upgradeSubscription(pool, subscription.id, plan, credits);
+  await recordCreditTransaction(pool, {
+    subscriptionId: subscription.id,
+    type: 'purchase',
+    amount: credits,
+    reference: `upgrade to ${plan}`,
+  });
+  return updated;
+});
+
+app.post('/v1/billing/:projectId/grant', async (request, reply) => {
+  const { projectId } = request.params as { projectId: string };
+  const { amount, reason } = request.body as { amount: number; reason: string };
+  if (!amount || amount <= 0) { reply.code(400); return { error: 'Positive amount required' }; }
+  const subscription = await getSubscriptionByProject(pool, projectId);
+  if (!subscription) { reply.code(404); return { error: 'No subscription' }; }
+  const entry = await recordCreditTransaction(pool, {
+    subscriptionId: subscription.id,
+    type: 'grant',
+    amount,
+    reference: reason,
+  });
+  return entry;
 });
 
 // Seed compliance rules on startup

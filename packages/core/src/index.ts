@@ -931,3 +931,23 @@ export {
   type OutputFormat,
   type LayoutValidationIssue,
 } from './layout-rendering';
+
+// ---------------------------------------------------------------------------
+// Task cbb08985 — Credits ledger and subscription billing
+// ---------------------------------------------------------------------------
+
+export {
+  getCreditsForPlan,
+  isPlanHigher,
+  isValidTransition,
+  isSubscriptionCancelled,
+  estimateJobCreditCost,
+  hasSufficientCredits,
+  PLAN_DEFINITIONS,
+  type SubscriptionPlan,
+  type SubscriptionStatus,
+  type CreditTransactionType,
+  type PlanDefinition,
+  type CreditConsumptionEvent,
+  type CreditGrantEvent,
+} from './billing';
