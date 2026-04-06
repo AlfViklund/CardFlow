@@ -1,76 +1,141 @@
-# Generation pipeline
+# Generation Pipeline
 
 Task: `095258be-e6bd-44d5-8ad1-98d543547228`
+Last updated: 2026-04-06
 
 ## Purpose
-The generation pipeline turns a validated brief into a staged set of CardFlow outputs. The key requirement is not one-off image generation, but a consistent multi-card series with controlled regeneration.
+The generation pipeline turns a validated brief into a staged series of CardFlow outputs. The key requirement is not generating one image — it is creating a **consistent multi-card series** with controlled regeneration and traceable lineage.
 
-## Workflow summary
-1. Step 0 passes the validated brief and analysis results into the generation pipeline.
-2. The pipeline creates a staged plan.
-3. Each stage is executed asynchronously.
-4. Generated artifacts are stored with traceable lineage.
-5. Targeted regeneration can replace one stage, one card, or one element without losing the history of earlier outputs.
+## Pipeline Architecture
 
-## Implementation notes
-- Separate orchestration from rendering.
-  - Orchestration decides what to generate next.
-  - Rendering produces the actual artifact.
-- Make every stage resumable.
-- Keep stage boundaries explicit so operators can see where work is stuck.
-- Record prompt version, workflow version, seed, model ID, and input references for every generated item.
-- Preserve prior versions; never overwrite a finished generation artifact.
+The pipeline consists of two layers:
 
-## Suggested pipeline states
-- queued
-- running
-- blocked
-- succeeded
-- failed
-- regenerating
-- superseded
+- **Orchestration layer** — decides what to generate next, enforces stage ordering, and manages approvals.
+- **Worker layer** — executes generation jobs asynchronously via a BullMQ queue backed by Redis.
 
-## Artifact contract
-Every generated artifact should include:
-- workflow step or stage name
-- source input version
-- version number
-- branch or regeneration lineage
-- provenance metadata
-- storage location or asset reference
-- human-readable summary of what changed
+```
+Step 0 (ingestion) → copy → scenes → design-concept → final
+        ↓                ↓          ↓          ↓          ↓
+  validation       marketing    product     visual    generated
+  + analysis       text plan   photography  layout     cards
+```
 
-## Targeted regeneration
-Targeted regeneration should support:
-- rerun of a full stage
-- rerun of a single card
-- rerun of a specific element inside a card
+## Queue & Worker Configuration
 
-Rules:
+| Setting | Value | Source |
+|--|--|--|
+| Queue name | `cardflow-jobs` | `@cardflow/core` |
+| Default card count | `8` | `defaultCardCount` (configurable 1–24) |
+| Storage bucket | `cardflow-dev` | `defaultStorageBucket` |
+| Worker concurrency | `2` | `apps/worker/src/worker.ts` |
+| Max retries | `3` (env: `WORKER_MAX_RETRIES`) | worker config |
+| Stall threshold | `5 minutes` (env: `WORKER_STALL_THRESHOLD_MIN`) | worker config |
+| Backoff strategy | Exponential: 1min → 2min → 4min → 8min → 16min (capped) | worker settings |
+
+### Stalled Job Recovery
+
+On boot the worker scans for jobs stuck in `processing` beyond the stall threshold. Each stalled job is:
+1. Re-queued in the database (status → `queued`)
+2. Re-enqueued into BullMQ
+3. Traced with a `job.recovered` event
+
+### Error Classification
+
+- **Transient errors** — `ECONNREFUSED`, `ETIMEDOUT`, `ECONNRESET`, `socket hang up`, `timeout`, `deadlock`, `too many clients`, `rate limit`, `503`, `504` — trigger retries via BullMQ.
+- **Permanent errors** — everything else (including "job not found") — are terminal.
+- **Dead-letter** — after retries exhausted or on permanent failure, the job is marked `dead-lettered` with a reason and a `job.dead-lettered` trace event.
+
+## Generation Stages
+
+### Canonical Stage Names
+
+| Stage | Produces | Depends On |
+|--|--|--|
+| `copy` | Marketing text for each card | Step 0 analysis output |
+| `scenes` | Product photography scene descriptions | `copy` |
+| `design-concept` | Visual layout / design concept | `scenes` |
+| `final` | Final generated cards | `design-concept` |
+
+Stage transitions are strictly sequential: `copy` → `scenes` → `design-concept` → `final`.
+Downstream stages cannot start until the upstream stage is completed.
+
+### Job Model
+
+Each generation job carries:
+
+- `projectId`, `cardId` (nullable for batch jobs)
+- `stage` — one of `copy`, `scenes`, `design-concept`, `final`
+- `scope` — `card`, `batch`, or `element`
+- `element` — optional: `text`, `scene`, `design`, `background`, `position`
+- `provider` — optional: `openai`, `stability`, `replicate`, `midjourney`, `custom`
+- `model`, `seed`, `prompt` — reproducibility fields
+- `inputData` — raw input payload
+- `parentGenerationId` — for regeneration lineage
+- `batchId` — for batch operations
+
+Stage statuses: `queued` → `processing` → `completed` | `failed` | `cancelled`
+
+### Targeted Regeneration
+
+Regeneration supports three scopes:
+
+| Scope | What | Effect |
+|--|--|--|
+| `stage` | Re-run an entire stage for a card | All outputs for that stage are regenerated |
+| `card` | Re-run a single card | Same as stage but card-scoped |
+| `element` | Re-run one element within a card | Only the targeted element changes |
+
+**Rules:**
 - Prior outputs remain available for comparison.
-- Regeneration creates a new version on the same lineage or a clearly linked branch.
-- Downstream stages should not silently consume a replaced artifact without an explicit handoff.
+- Regeneration creates a new version on the same lineage or a linked branch.
+- Downstream stages are not automatically re-run — an explicit handoff is required.
+- After regenerating an approved stage, the stage status downgrades to `partially_approved`.
 
-## Operational runbook
-### Healthy pipeline behavior
-- Queue depth stays bounded.
-- Stage durations are visible.
-- Failures are isolated to the failing stage.
-- Operators can explain which version fed which output.
+## Storage Layout
 
-### Failure handling
-- Stage failure: mark the stage failed, record the error, and preserve prior versions.
-- Partial failure: pause downstream stages until the missing artifact is resolved.
-- Regeneration failure: keep the prior approved artifact available.
+- **Database** — `generation_jobs` and `generation_outputs` tables (PostgreSQL)
+- **Assets** — stored in bucket `cardflow-dev` with a storage key per artifact
+- **Revisions** — every job completion creates a `revisions` row with trace metadata
+- **Trace events** — `trace_events` table records `job.started`, `job.completed`, `job.retrying`, `job.dead-lettered`
 
-### Smoke checks
-- Run one brief through the full staged pipeline.
-- Confirm each stage is enqueued and completed asynchronously.
-- Trigger a targeted regeneration for one card.
-- Confirm the new artifact keeps lineage and the old one remains available.
+Each generated artifact (output) includes:
+- `generation_id`, `card_id`, `output_type`
+- `content` (JSON), `storage_key`, `metadata`
+- Output types: `text`, `scene`, `concept_image`, `final_card`, `batch_metadata`
 
-## Gaps / questions
-- What are the canonical stage names in the approved planner dossier?
-- Which queue names and worker names should the docs use?
-- Is the MVP generating 8 cards strictly, or is that configurable by project?
-- What is the final retention window for superseded artifacts?
+## Monitoring & Alerting
+
+Watch for:
+- Queue depth growth (jobs backing up in Redis)
+- Jobs exceeding stall threshold (5 min)
+- Dead-letter pile-up (permanent failures)
+- Stage duration anomalies
+- Pass/fail ratio changes across stages
+
+## Cost Control
+
+- Batch jobs share a `batchId` for cost aggregation.
+- `model` and `provider` fields allow routing to different price tiers.
+- `seed` enables reproducible outputs without re-running expensive generations.
+- Monitor `attempts` count per job — high retry counts indicate upstream instability.
+
+## Operational Runbook
+
+### Smoke Check
+1. Create a project with one card.
+2. Submit a copy generation job (`scope: card`).
+3. Confirm the job is enqueued to `cardflow-jobs` and processed by the worker.
+4. Confirm a revision is created for the job completion.
+5. Trigger a targeted regeneration on one element.
+6. Confirm the new artifact keeps lineage and the old one remains readable.
+
+### Recover a Dead-Lettered Job
+1. Query the `jobs` table for `status = 'dead-lettered'`.
+2. Inspect the `dead_letter_reason` field.
+3. If the cause was transient (e.g. provider outage), re-queue manually.
+4. If the cause is permanent (bad input), fix the input and create a new job.
+
+### Rollback a Bad Generation
+1. The previous generation output is preserved — never overwritten.
+2. Use the revision history to identify the last-good version.
+3. Revert the card's `selected_concept_id` or re-run from the previous stage.

@@ -12,16 +12,16 @@ Draft implementation docs/runbooks for the approved CardFlow docs lane and captu
 
 ### Current State
 - State: Done
-- Last updated: 2026-04-05 22:50 Asia/Yekaterinburg
-- What is happening now: Draft docs package completed and task comments posted for all four approved docs-lane tasks.
-- Key constraint/signal: board task list is available via `/api/v1/boards/{board_id}/tasks`; task comments were empty; the planner dossier/package itself was not present locally.
+- Last updated: 2026-04-06 00:30 Asia/Yekaterinburg
+- What is happening now: Compliance runbook expanded with full policy, precedence, review workflow, export-blocking, operator procedures, and rollout notes. All compliance gaps resolved.
+- Key constraint/signal: No source code present in workspace — docs are derived from board task specs and existing implementation docs.
 - Why blocked (if any): none
 - Next step: Wait for review or revision requests.
 
 ### What Changed Since Last Update
-- Confirmed the four target tasks and their full UUIDs.
-- Created the implementation docs package under `docs/implementation/`.
-- Posted task comments with evidence and gap notes for all four tasks.
+- Rewrote `compliance-ops-runbook.md` from 132 lines to ~300 lines with 10 structured sections
+- Added rule precedence order (§2), review workflow behavior (§5), export-blocking conditions (§6), operator procedures (§7), rollout notes (§8)
+- Resolved all remaining compliance gaps in `gaps-and-questions.md`
 
 ### Decisions / Assumptions
 - Use the board task descriptions and acceptance criteria as the operational source of truth in this workspace.

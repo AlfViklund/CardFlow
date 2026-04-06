@@ -20,7 +20,9 @@ This package is a draft implementation/reference set for the docs lane. It turns
 ## What these docs cover
 - Workflow shape from ingestion to export
 - Queue/job boundaries and operational expectations
-- Compliance and export blocking behavior
+- Compliance policy, rule precedence, review workflow, export-blocking conditions
+- Operator procedures: updating rules, interpreting validation reports, monitoring failures
+- Rollout notes: configuration, alerting, safe rule-version changes
 - Revision/provenance rules, rollback, and inspection
 
 ## What is still missing from the planner dossier package
