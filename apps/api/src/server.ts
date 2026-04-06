@@ -51,6 +51,7 @@ import {
   makeGatingDecision,
   validateExportCard,
   validateProjectForExport,
+  getCreditsForPlan,
   generateQualityReport,
 } from '@cardflow/core';
 import {
@@ -1778,3 +1779,121 @@ async function shutdown(signal: string) {
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
+
+// ========================================================================
+// Task 9c6fe204 — Batching engine + 4K limits endpoints
+// ========================================================================
+
+app.post('/v1/generation/batch-plan', async (request, reply) => {
+  const { resolution, jobCount, baseCostCents } = request.body as {
+    resolution: string;
+    jobCount: number;
+    baseCostCents?: number;
+  };
+
+  if (!['720p', '1080p', '2k', '3k', '4k'].includes(resolution)) {
+    reply.code(400);
+    return { error: 'Invalid resolution. Use 720p, 1080p, 2k, 3k, or 4k.' };
+  }
+
+  const batches = planBatches(
+    resolution as '720p' | '1080p' | '2k' | '3k' | '4k',
+    jobCount,
+    baseCostCents,
+  );
+
+  return {
+    resolution,
+    totalJobCount: jobCount,
+    batchCount: batches.length,
+    totalEstimatedCostCents: batches.reduce((s, b) => s + b.estimatedCostCents, 0),
+    batches,
+  };
+});
+
+app.post('/v1/generation/batch-group', async (request, reply) => {
+  const { projectId } = request.params as { projectId: string };
+  const { batchType, maxResolution, jobIds, costBudgetCents } = request.body as {
+    batchType: string;
+    maxResolution?: string;
+    jobIds: string[];
+    costBudgetCents?: number;
+  };
+
+  const group = await createBatchGroup(pool, {
+    projectId,
+    batchType,
+    maxResolution,
+    totalJobs: jobIds.length,
+    costBudgetCents,
+  });
+
+  for (let i = 0; i < jobIds.length; i++) {
+    await addBatchMember(pool, group.id, jobIds[i], i);
+  }
+
+  await updateBatchGroupStatus(pool, group.id, 'queued');
+
+  reply.code(201);
+  return group;
+});
+
+app.get('/v1/generation/batch-groups/:projectId', async (request, reply) => {
+  const { projectId } = request.params as { projectId: string };
+  const groups = await getBatchGroupsByProject(pool, projectId);
+  return { projectId, groups };
+});
+
+app.get('/v1/generation/batch-groups/:groupId', async (request, reply) => {
+  const { groupId } = request.params as { groupId: string };
+  const group = await getBatchGroupWithMembers(pool, groupId);
+  if (!group) {
+    reply.code(404);
+    return { error: 'Batch group not found' };
+  }
+  return group;
+});
+
+app.post('/v1/generation/batch-groups/:groupId/execute', async (request, reply) => {
+  const { groupId } = request.params as { groupId: string };
+  const group = await getBatchGroupWithMembers(pool, groupId);
+  if (!group) {
+    reply.code(404);
+    return { error: 'Batch group not found' };
+  }
+
+  await updateBatchGroupStatus(pool, groupId, 'processing');
+
+  // Enqueue all member jobs
+  for (const member of group.members) {
+    await queue.add(queueName, {
+      type: 'generation.execute',
+      generationId: member.job_id,
+      batchGroupId: groupId,
+      sequenceOrder: member.sequence_order,
+    }, {
+      jobId: `gen-${member.job_id}`,
+      attempts: 3,
+      removeOnComplete: 100,
+      removeOnFail: 100,
+    });
+  }
+
+  return { batchGroupId: groupId, status: 'processing', jobCount: group.members.length };
+});
+
+app.post('/v1/generation/resolve-resolution', async (request, reply) => {
+  const { width, height, maxTier } = request.body as {
+    width: number;
+    height: number;
+    maxTier?: string;
+  };
+
+  const result = resolveResolution(
+    width,
+    height,
+    (maxTier as any) ?? '2k',
+  );
+
+  return result;
+});

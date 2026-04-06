@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     if (budgetUsedPct > 80) {
       alerts.push({ type: 'critical', message: `Budget critical — ${budgetUsedPct}% of monthly budget consumed. Forecast: $${(forecastMonthEnd / 100).toFixed(2)}.` });
     } else if (budgetUsedPct > 60) {
-      alerts.push({ type: 'warning', message: `Budget at ${budgetUsedPct%} — monitor usage to avoid overage.` });
+      alerts.push({ type: 'warning', message: `Budget at ${budgetUsedPct}% — monitor usage to avoid overage.` });
     }
     if (forecastMonthEnd > monthlyBudgetCents) {
       alerts.push({ type: 'warning', message: `Forecast exceeds budget by $${((forecastMonthEnd - monthlyBudgetCents) / 100).toFixed(2)} — consider limiting generation.` });

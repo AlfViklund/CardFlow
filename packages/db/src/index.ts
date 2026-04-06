@@ -1557,3 +1557,195 @@ export async function recordJobRetry(pool: Pool, jobId: string) {
 // ---------------------------------------------------------------------------
 
 export * from './billing';
+
+// ---------------------------------------------------------------------------
+// Task a054cea4 — Events DB layer
+// ---------------------------------------------------------------------------
+
+export async function insertEvent(
+  pool: Pool,
+  input: {
+    projectId: string;
+    category: string;
+    type: string;
+    userId?: string;
+    stepId?: string;
+    jobId?: string;
+    cardId?: string;
+    modelId?: string;
+    resolution?: string;
+    costEstimateCents?: number;
+    eventData?: Record<string, unknown>;
+  },
+) {
+  const result = await pool.query(
+    `INSERT INTO events (
+        project_id, category, type, user_id, step_id, job_id, card_id,
+        model_id, resolution, cost_estimate_cents, event_data
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *`,
+    [
+      input.projectId,
+      input.category,
+      input.type,
+      input.userId ?? null,
+      input.stepId ?? null,
+      input.jobId ?? null,
+      input.cardId ?? null,
+      input.modelId ?? null,
+      input.resolution ?? null,
+      input.costEstimateCents ?? null,
+      input.eventData ? JSON.stringify(input.eventData) : '{}',
+    ],
+  );
+  return result.rows[0];
+}
+
+export async function getEventsByProject(
+  pool: Pool,
+  projectId: string,
+  limit = 100,
+  offset = 0,
+) {
+  const result = await pool.query(
+    `SELECT * FROM events
+     WHERE project_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [projectId, limit, offset],
+  );
+  return result.rows;
+}
+
+export async function getEventsByJob(
+  pool: Pool,
+  jobId: string,
+) {
+  const result = await pool.query(
+    `SELECT * FROM events WHERE job_id = $1 ORDER BY created_at ASC`,
+    [jobId],
+  );
+  return result.rows;
+}
+
+export async function getEventsByType(
+  pool: Pool,
+  eventType: string,
+  limit = 50,
+) {
+  const result = await pool.query(
+    `SELECT * FROM events WHERE type = $1 ORDER BY created_at DESC LIMIT $2`,
+    [eventType, limit],
+  );
+  return result.rows;
+}
+
+// ---------------------------------------------------------------------------
+// Task 9c6fe204 — Batching DB layer
+// ---------------------------------------------------------------------------
+
+export async function createBatchGroup(
+  pool: Pool,
+  input: {
+    projectId: string;
+    batchType: string;
+    maxResolution?: string;
+    totalJobs?: number;
+    costBudgetCents?: number;
+  },
+) {
+  const result = await pool.query(
+    `INSERT INTO batch_groups (project_id, batch_type, max_resolution, total_jobs, cost_budget_cents)
+     VALUES ($1, $2, COALESCE($3, '2000x2000'), COALESCE($4, 0), $5)
+     RETURNING *`,
+    [input.projectId, input.batchType, input.maxResolution, input.totalJobs, input.costBudgetCents ?? null],
+  );
+  return result.rows[0];
+}
+
+export async function addBatchMember(
+  pool: Pool,
+  batchGroupId: string,
+  jobId: string,
+  sequenceOrder: number,
+) {
+  const result = await pool.query(
+    `INSERT INTO batch_group_members (batch_group_id, job_id, sequence_order)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [batchGroupId, jobId, sequenceOrder],
+  );
+  return result.rows[0];
+}
+
+export async function updateBatchGroupStatus(
+  pool: Pool,
+  batchGroupId: string,
+  status: string,
+) {
+  const result = await pool.query(
+    `UPDATE batch_groups SET status = $2, updated_at = now(),
+       completed_at = CASE WHEN $2 IN ('completed', 'failed') THEN now() ELSE completed_at END
+     WHERE id = $1 RETURNING *`,
+    [batchGroupId, status],
+  );
+  return result.rows[0];
+}
+
+export async function completeBatchMember(
+  pool: Pool,
+  batchGroupId: string,
+  jobId: string,
+  resultData?: Record<string, unknown>,
+  error?: string,
+) {
+  const result = await pool.query(
+    `UPDATE batch_group_members
+     SET status = $3, result = $4, error = $5, completed_at = now()
+     WHERE batch_group_id = $1 AND job_id = $2
+     RETURNING *`,
+    [batchGroupId, jobId, error ? 'failed' : 'completed', resultData ? JSON.stringify(resultData) : null, error ?? null],
+  );
+  return result.rows[0];
+}
+
+export async function getBatchGroupWithMembers(
+  pool: Pool,
+  batchGroupId: string,
+) {
+  const groupResult = await pool.query(
+    'SELECT * FROM batch_groups WHERE id = $1',
+    [batchGroupId],
+  );
+  if (groupResult.rows.length === 0) return null;
+
+  const membersResult = await pool.query(
+    `SELECT bgm.*, gj.type as job_type, gj.status as job_status
+     FROM batch_group_members bgm
+     LEFT JOIN generation_jobs gj ON gj.id = bgm.job_id
+     WHERE bgm.batch_group_id = $1
+     ORDER BY bgm.sequence_order`,
+    [batchGroupId],
+  );
+
+  return {
+    ...groupResult.rows[0],
+    members: membersResult.rows,
+  };
+}
+
+export async function getBatchGroupsByProject(
+  pool: Pool,
+  projectId: string,
+  limit = 50,
+) {
+  const result = await pool.query(
+    `SELECT * FROM batch_groups
+     WHERE project_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [projectId, limit],
+  );
+  return result.rows;
+}

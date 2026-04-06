@@ -951,3 +951,43 @@ export {
   type CreditConsumptionEvent,
   type CreditGrantEvent,
 } from './billing';
+
+// ---------------------------------------------------------------------------
+// Task a054cea4 — Event tracking and job tracing instrumentation
+// ---------------------------------------------------------------------------
+
+export {
+  categorizeEventType,
+  createProjectEvent,
+  createGenerationEvent,
+  createExportEvent,
+  type EventType,
+  type EventCategory,
+  type ProjectEvent,
+  type GenerationEvent,
+  type ExportEvent,
+  type BaseEvent,
+  type CardFlowEvent,
+  type ProjectEventData,
+  type GenerationEventData,
+  type ExportEventData,
+} from './events';
+
+// ---------------------------------------------------------------------------
+// Task 9c6fe204 — Batching engine + 4K limits
+// ---------------------------------------------------------------------------
+
+export {
+  maxBatchForResolution,
+  estimateBatchCost,
+  estimateBatchCompletionSec,
+  planBatches,
+  resolveResolution,
+  isValidBatchTransition,
+  isBatchFinished,
+  RESOLUTION_TIERS,
+  type ResolutionTier,
+  type ResolutionSpec,
+  type BatchPlan,
+  type BatchStatus,
+} from './batching';
