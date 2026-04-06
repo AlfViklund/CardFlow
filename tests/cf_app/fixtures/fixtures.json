@@ -1,0 +1,47 @@
+{
+  "project_create": {
+    "name": "Test Product — CardFlow QA",
+    "marketplaces": ["wildberries"],
+    "brief": "Premium wireless headphones with noise cancellation",
+    "default_card_count": 8,
+    "category": null
+  },
+  "project_create_wb_ozon": {
+    "name": "Test Product — Multi-marketplace",
+    "marketplaces": ["wildberries", "ozon"],
+    "brief": "Organic green tea 100g",
+    "default_card_count": 8
+  },
+  "valid_main_image_meta": {
+    "filename": "headphones_main.jpg",
+    "content_type": "image/jpeg",
+    "min_dimensions": {"width": 1200, "height": 1200},
+    "max_file_size_bytes": 10485760
+  },
+  "invalid_inputs": [
+    {"scenario": "missing_main_photo", "expect_block": true, "reason": "Main photo is required"},
+    {"scenario": "file_too_large", "filename": "huge.tiff", "size_bytes": 52428800, "expect_block": true},
+    {"scenario": "invalid_file_type", "filename": "product.exe", "content_type": "application/octet-stream", "expect_block": true},
+    {"scenario": "low_resolution", "filename": "tiny.jpg", "dimensions": {"width": 50, "height": 50}, "expect_block": true},
+    {"scenario": "corrupted_image", "filename": "corrupt.jpg", "expect_block": true},
+    {"scenario": "too_many_references", "reference_count": 7, "expect_block": true, "reason": "Maximum 5 reference images"},
+    {"scenario": "empty_brief_warning", "brief": "", "expect_block": false, "severity": "warning"},
+    {"scenario": "brief_too_long", "brief_len_chars": 5001, "expect_block": true}
+  ],
+  "mock_category_inferences": [
+    {"input_brief": "wireless headphones", "expected_category": "Electronics > Audio > Headphones", "expected_attributes": ["noise_cancellation", "bluetooth", "battery_life"]},
+    {"input_brief": "green tea 100g", "expected_category": "Food & Beverages > Tea", "expected_attributes": ["weight", "organic"]}
+  ],
+  "compliance_rules_wb": {
+    "prohibited_keywords": ["подделка", "копия", "реплика", "18+", "порно"],
+    "min_image_resolution": {"width": 900, "height": 900},
+    "max_title_length": 60,
+    "mandatory_fields": ["brand", "category", "name"]
+  },
+  "compliance_rules_ozon": {
+    "prohibited_keywords": ["реплика", "фейк"],
+    "min_image_resolution": {"width": 1000, "height": 1000},
+    "max_title_length": 120,
+    "mandatory_fields": ["brand"]
+  }
+}

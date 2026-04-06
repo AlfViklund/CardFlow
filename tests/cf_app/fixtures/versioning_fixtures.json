@@ -1,0 +1,273 @@
+{
+  "revision_schema": {
+    "id": "uuid",
+    "card_id": "integer",
+    "project_id": "uuid",
+    "revision_number": "integer",
+    "parent_id": "uuid|null",
+    "action": "string",
+    "action_params": "object",
+    "payload_snapshot": "object",
+    "content_hash": "sha256",
+    "created_at": "iso8601",
+    "created_by": "string",
+    "traceability": {
+      "prompt_version": "string",
+      "workflow_version": "string",
+      "seed": "integer",
+      "model_id": "string",
+      "reference_hashes": ["sha256"],
+      "input_hashes": ["sha256"],
+      "generation_timestamp": "iso8601",
+      "model_params": "object"
+    }
+  },
+  "revision_actions": [
+    "card_created",
+    "card_regenerated",
+    "stage_regenerated",
+    "element_regenerated",
+    "stage_approved",
+    "stage_commented",
+    "card_approved",
+    "revision_restored",
+    "export_initiated"
+  ],
+  "regeneration_targets": [
+    {"scope": "stage", "description": "All cards in the stage", "expected_revision_count": "all_cards"},
+    {"scope": "card", "description": "Single card", "expected_revision_count": 1},
+    {"scope": "element", "description": "Single element within a card", "expected_revision_count": 1}
+  ],
+  "valid_elements": [
+    "text_overlay",
+    "background",
+    "badge",
+    "icon",
+    "position"
+  ],
+  "branching_scenarios": [
+    {
+      "id": "linear_single_card",
+      "description": "Repeated single-card regenerations form a linear chain",
+      "operations": [
+        {"action": "create", "revision": 1, "parent_id": null},
+        {"action": "regenerate", "revision": 2, "parent_id": 1},
+        {"action": "regenerate", "revision": 3, "parent_id": 2},
+        {"action": "regenerate", "revision": 4, "parent_id": 3}
+      ],
+      "expected_chain": [1, 2, 3, 4],
+      "expected_branches": 0
+    },
+    {
+      "id": "stage_batch_branch",
+      "description": "Stage-level regeneration creates parallel revisions sharing a batch_id",
+      "operations": [
+        {"action": "create", "card_ids": [1, 2, 3, 4, 5, 6, 7, 8], "revision": 1, "parent_id": null},
+        {"action": "stage_regenerate", "card_ids": [1, 2, 3, 4, 5, 6, 7, 8], "revision": 2, "parent_id": 1, "batch_id": "batch_001"}
+      ],
+      "expected_chain_per_card": [1, 2],
+      "shared_batch_id": "batch_001"
+    },
+    {
+      "id": "mixed_targeting",
+      "description": "Mix of stage, card, and element regenerations",
+      "operations": [
+        {"action": "create", "revision": 1, "parent_id": null},
+        {"action": "stage_regenerate", "revision": 2, "parent_id": 1, "batch_id": "batch_001"},
+        {"action": "card_regenerate", "card_id": 3, "revision": 3, "parent_id": 2},
+        {"action": "element_regenerate", "card_id": 5, "element": "text_overlay", "revision": 3, "parent_id": 2}
+      ],
+      "expected_card_3_chain": [1, 2, 3],
+      "expected_card_5_chain": [1, 2, 3],
+      "expected_other_cards_chain": [1, 2]
+    }
+  ],
+  "immutability_checks": [
+    {
+      "id": "no_patch",
+      "method": "PATCH",
+      "expected_status": 405,
+      "description": "PATCH on revision endpoint returns 405 Method Not Allowed"
+    },
+    {
+      "id": "no_delete",
+      "method": "DELETE",
+      "expected_status": 405,
+      "description": "DELETE on revision endpoint returns 405 Method Not Allowed"
+    },
+    {
+      "id": "no_put",
+      "method": "PUT",
+      "expected_status": 405,
+      "description": "PUT on revision endpoint returns 405 Method Not Allowed"
+    },
+    {
+      "id": "hash_stability",
+      "description": "Same revision fetched twice yields identical content_hash",
+      "fetches": 2,
+      "expected": "identical_hashes"
+    },
+    {
+      "id": "payload_stability",
+      "description": "Same revision payload_snapshot fetched twice yields identical result",
+      "fetches": 2,
+      "expected": "identical_payloads"
+    },
+    {
+      "id": "metadata_stability",
+      "description": "created_at, created_by, and traceability fields never change",
+      "fetches": 2,
+      "expected": "identical_metadata"
+    }
+  ],
+  "rollback_scenarios": [
+    {
+      "id": "rollback_to_earlier",
+      "description": "Rollback card from r5 to r2 creates new r6 with r2's payload",
+      "current_revision": 5,
+      "target_revision": 2,
+      "expected_new_revision": 6,
+      "expected_payload_match": "r2_payload",
+      "original_r2_untouched": true
+    },
+    {
+      "id": "rollback_to_current",
+      "description": "Rollback to current revision is a no-op or returns 400/409",
+      "current_revision": 3,
+      "target_revision": 3,
+      "expected_outcome": "no_op_or_error",
+      "no_data_corruption": true
+    },
+    {
+      "id": "rollback_nonexistent",
+      "description": "Rollback to non-existent revision returns 404",
+      "current_revision": 3,
+      "target_revision": 99,
+      "expected_status": 404
+    },
+    {
+      "id": "rollback_preserves_history",
+      "description": "After rollback, full revision chain is intact",
+      "operations": ["create", "regenerate", "regenerate", "rollback_to_1"],
+      "expected_chain_length": 4,
+      "no_gaps": true
+    }
+  ],
+  "audit_entry_schema": {
+    "id": "uuid",
+    "project_id": "uuid",
+    "action": "string",
+    "actor": "string",
+    "timestamp": "iso8601",
+    "details": "object",
+    "card_id": "integer|null",
+    "stage_id": "integer|null",
+    "revision_before": "integer|null",
+    "revision_after": "integer|null"
+  },
+  "audit_action_details": {
+    "card_created": ["card_id", "project_id", "scene_id", "design_variant"],
+    "card_regenerated": ["card_id", "revision_before", "revision_after", "target_scope"],
+    "stage_regenerated": ["stage_id", "stage_name", "card_count", "batch_id"],
+    "element_regenerated": ["card_id", "element_name", "revision_before", "revision_after"],
+    "stage_approved": ["stage_id", "stage_name", "approver", "approved_card_count"],
+    "stage_commented": ["stage_id", "comment_text", "requires_regenerate", "author"],
+    "card_approved": ["card_id", "revision_number", "approved_at"],
+    "revision_restored": ["card_id", "from_revision", "to_revision"],
+    "export_initiated": ["format", "marketplace", "exported_card_count", "export_id"]
+  },
+  "concurrency_scenarios": [
+    {
+      "id": "simultaneous_card_regenerate",
+      "description": "Two simultaneous regenerations of the same card",
+      "operations": [
+        {"action": "regenerate_card", "card_id": 3, "thread": "A"},
+        {"action": "regenerate_card", "card_id": 3, "thread": "B"}
+      ],
+      "expected": "two_distinct_sequential_revisions",
+      "no_data_loss": true
+    },
+    {
+      "id": "regenerate_then_rollback_race",
+      "description": "Regenerate + immediate rollback to pre-regenerate revision",
+      "operations": [
+        {"action": "regenerate_card", "card_id": 3, "thread": "A"},
+        {"action": "rollback_to", "card_id": 3, "target_revision": 1, "thread": "B"}
+      ],
+      "expected": "graceful_handling",
+      "no_corruption": true
+    }
+  ],
+  "provenance_integrity_checks": [
+    {
+      "id": "traceability_completeness",
+      "required_fields": [
+        "prompt_version",
+        "workflow_version",
+        "seed",
+        "model_id",
+        "reference_hashes",
+        "input_hashes",
+        "generation_timestamp"
+      ],
+      "description": "Every generated revision must have complete traceability"
+    },
+    {
+      "id": "reference_hash_verifiability",
+      "description": "Reference hashes in revisions match actual uploaded reference files",
+      "check": "hash_match"
+    },
+    {
+      "id": "seed_reproducibility",
+      "description": "Same seed + same inputs should produce same output hash",
+      "check": "deterministic"
+    },
+    {
+      "id": "export_provenance",
+      "description": "Export package includes traceability for each card",
+      "required_in_export": [
+        "revision_number",
+        "content_hash",
+        "prompt_version",
+        "workflow_version",
+        "model_id"
+      ]
+    }
+  ],
+  "edge_case_scenarios": [
+    {
+      "id": "empty_revision_list",
+      "description": "Card with no revisions returns empty list",
+      "expected_status": 200,
+      "expected_body": []
+    },
+    {
+      "id": "deleted_project_revisions",
+      "description": "Accessing revisions of deleted project returns 404 or 410",
+      "expected_status": [404, 410]
+    },
+    {
+      "id": "long_chain_pagination",
+      "description": "100+ revision chain with correct pagination",
+      "revision_count": 100,
+      "page_size": 20,
+      "expected_pages": 5
+    },
+    {
+      "id": "cross_project_revision_access",
+      "description": "Fetching revision from different project returns 403 or 404",
+      "expected_status": [403, 404]
+    },
+    {
+      "id": "cross_card_comparison",
+      "description": "Comparing revisions from different cards returns 400",
+      "expected_status": 400
+    },
+    {
+      "id": "atomic_batch_regeneration",
+      "description": "Stage regeneration of 8 cards is atomic — all or nothing",
+      "card_count": 8,
+      "expected": "all_succeed_or_none"
+    }
+  ]
+}
