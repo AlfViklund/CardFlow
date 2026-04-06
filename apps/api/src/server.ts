@@ -36,10 +36,20 @@ import {
   generationOutputCreateSchema,
   reproducibilitySchema,
   defaultWbRules,
+  defaultOzonRules,
+  getAllDefaultRules,
   getMergedComplianceRules,
   calculateComplianceScore,
   ruleCheckResultSchema,
   complianceValidationSchema,
+  ComplianceValidator,
+  buildComplianceReport,
+  validateCardCount,
+  type ComplianceInput,
+  type ComplianceReport,
+  analyzeQuality,
+  makeGatingDecision,
+  generateQualityReport,
 } from '@cardflow/core';
 import {
   createApproval,
@@ -136,7 +146,7 @@ await storage.ensureBucket();
 const app = Fastify({ logger: true });
 
 // Seed compliance rules on startup
-await seedComplianceRules(pool, defaultWbRules());
+await seedComplianceRules(pool, getAllDefaultRules());
 await app.register(cors, { origin: true });
 
 app.get('/healthz', async () => ({ ok: true, service: 'api' }));
@@ -1447,8 +1457,185 @@ app.post('/v1/projects/:projectId/export-block', async (request, reply) => {
   return updateProjectExportBlock(pool, projectId, payload.blocked ?? true);
 });
 
+// ========================================================================
+// Task d4118303 — Compliance validation engine endpoints
+// ========================================================================
+
+app.post('/v1/compliance/validate-step0', async (request, reply) => {
+  const { projectId, inputText, metadata } = request.body as {
+    projectId: string;
+    inputText: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const project = await getProject(pool, projectId);
+  if (!project) {
+    reply.code(404);
+    return { error: 'project not found' };
+  }
+
+  const marketplaces = project.marketplaces as string[];
+  const rules = getAllDefaultRules().filter((r) => marketplaces.includes(r.marketplace));
+  const validator = new ComplianceValidator(rules);
+
+  const complianceInput: ComplianceInput = {
+    inputText: inputText ?? '',
+    metadata: metadata ?? {},
+    marketplaces,
+  };
+
+  const ruleResults = validator.validate(complianceInput);
+  const report = buildComplianceReport(ruleResults, marketplaces);
+
+  // Persist the validation
+  const validation = await createComplianceValidation(pool, {
+    projectId,
+    cardId: null,
+    stepId: null,
+    status: report.status,
+    complianceScore: report.score,
+    criticalFailures: report.criticalFailures,
+    warnings: report.warnings,
+    ruleResults: ruleResults as Array<Record<string, unknown>>,
+    report: report.messages.join('\n'),
+  });
+
+  // Update project export block if critical failures
+  if (report.criticalFailures > 0) {
+    await updateProjectExportBlock(pool, projectId, true);
+  }
+
+  reply.code(201);
+  return { ...report, validationId: validation.id };
+});
+
+app.post('/v1/compliance/validate-card', async (request, reply) => {
+  const { cardId, inputText, metadata } = request.body as {
+    cardId: string;
+    inputText?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const card = await getCard(pool, cardId);
+  if (!card) {
+    reply.code(404);
+    return { error: 'card not found' };
+  }
+
+  const project = await getProject(pool, card.project_id);
+  if (!project) {
+    reply.code(404);
+    return { error: 'project not found' };
+  }
+
+  const marketplaces = project.marketplaces as string[];
+  const rules = getAllDefaultRules().filter((r) => marketplaces.includes(r.marketplace));
+  const validator = new ComplianceValidator(rules);
+
+  // Include card count in validation if it's in the project
+  const projectCards = await listCardsByProject(pool, project.id);
+  const cardCountResult = validateCardCount(projectCards.length, marketplaces);
+
+  const complianceInput: ComplianceInput = {
+    inputText: inputText ?? (card.brief ?? ''),
+    metadata: { ...metadata, cardNumber: card.card_number, ...card.metadata },
+    marketplaces,
+  };
+
+  const ruleResults = validator.validate(complianceInput);
+
+  // Add card count result
+  ruleResults.push(cardCountResult);
+
+  const report = buildComplianceReport(ruleResults, marketplaces);
+
+  const validation = await createComplianceValidation(pool, {
+    projectId: project.id,
+    cardId,
+    stepId: null,
+    status: report.status,
+    complianceScore: report.score,
+    criticalFailures: report.criticalFailures,
+    warnings: report.warnings,
+    ruleResults: ruleResults as Array<Record<string, unknown>>,
+    report: report.messages.join('\n'),
+  });
+
+  if (report.criticalFailures > 0) {
+    await updateProjectExportBlock(pool, project.id, true);
+  }
+
+  reply.code(201);
+  return { ...report, validationId: validation.id };
+});
+
+app.post('/v1/compliance/validate-card-count', async (request, reply) => {
+  const { projectId, cardCount } = request.body as {
+    projectId: string;
+    cardCount: number;
+  };
+
+  const project = await getProject(pool, projectId);
+  if (!project) {
+    reply.code(404);
+    return { error: 'project not found' };
+  }
+
+  const marketplaces = project.marketplaces as string[];
+  const result = validateCardCount(cardCount, marketplaces);
+
+  reply.code(result.severity === 'critical' ? 422 : 200);
+  return result;
+});
+
+// ========================================================================
+// Task ca05a06d — Quality-risk scoring and Step 0 gating
+// ========================================================================
+
+app.post('/v1/quality/analyze', async (request, reply) => {
+  const { imageMetadata, marketplaces, mainImage } = request.body as {
+    imageMetadata?: {
+      width?: number;
+      height?: number;
+      fileSizeBytes?: number;
+      mimeType?: string;
+      brightness?: number;
+    };
+    marketplaces?: string[];
+    mainImage?: {
+      contentBase64?: string;
+      filename?: string;
+    };
+  };
+
+  const mp = marketplaces ?? ['wildberries'];
+  const width = imageMetadata?.width ?? 0;
+  const height = imageMetadata?.height ?? 0;
+  const fileSizeBytes = imageMetadata?.fileSizeBytes ?? 0;
+  const mimeType = imageMetadata?.mimeType ?? '';
+  const brightness = imageMetadata?.brightness;
+
+  const qualityResult = analyzeQuality(
+    { width, height, fileSizeBytes, mimeType, brightness },
+    mp,
+  );
+
+  const gatingResult = makeGatingDecision(
+    qualityResult.overallScore,
+    qualityResult.risks,
+    mp,
+  );
+
+  reply.code(gatingResult.decision === 'blocked' ? 422 : 200);
+  return {
+    ...qualityResult,
+    gatingResult,
+    report: generateQualityReport(qualityResult, mp),
+  };
+});
+
 // Seed compliance rules on startup
-await seedComplianceRules(pool, defaultWbRules());
+await seedComplianceRules(pool, getAllDefaultRules());
 
 const address = await app.listen({ port: env.port, host: '0.0.0.0' });
 app.log.info(`API listening on ${address}`);

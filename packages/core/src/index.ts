@@ -742,32 +742,25 @@ export const complianceValidationSchema = z.object({
 });
 export type ComplianceValidation = z.infer<typeof complianceValidationSchema>;
 
-/** WB default compliance rules seed */
-export function defaultWbRules(): ComplianceRuleInput[] {
-  return [
-    // Prohibited content
-    { marketplace: 'wildberries', category: 'prohibited_content', ruleCode: 'wb_no_contact_info', description: 'No phone numbers, emails, or external links in images', severity: 'critical', metadata: { patterns: ['\\d{10,}', '@', '\\.ru/', '\\.com/'] } },
-    { marketplace: 'wildberries', category: 'prohibited_content', ruleCode: 'wb_no_competitor_refs', description: 'No references to other marketplaces or brands', severity: 'critical', metadata: { keywords: ['ozon', 'aliexpress', 'amazon'] } },
-    { marketplace: 'wildberries', category: 'prohibited_content', ruleCode: 'wb_false_claims', description: 'No unverified claims (medical, warranty, "best", "#1")', severity: 'warning', metadata: { keywords: ['лучший', 'номер 1', 'медицин', 'гаранти'] } },
-    
-    // Visibility & quality
-    { marketplace: 'wildberries', category: 'visibility_quality', ruleCode: 'wb_white_background_main', description: 'Main product photo should be on white background', severity: 'warning', metadata: { requirement: 'white_background' } },
-    { marketplace: 'wildberries', category: 'visibility_quality', ruleCode: 'wb_product_focus', description: 'Product must be the clear focal point', severity: 'warning', metadata: { requirement: 'product_focal' } },
-    { marketplace: 'wildberries', category: 'visibility_quality', ruleCode: 'wb_no_clutter', description: 'Minimal distracting elements in frame', severity: 'info', metadata: {} },
-    
-    // Format & resolution
-    { marketplace: 'wildberries', category: 'format_resolution', ruleCode: 'wb_min_900px', description: 'Minimum 900x900px for main image', severity: 'critical', metadata: { minDimension: 900 } },
-    { marketplace: 'wildberries', category: 'format_resolution', ruleCode: 'wb_format_jpeg_png_webp', description: 'Accepted formats: JPEG, PNG, WebP', severity: 'critical', metadata: { acceptedFormats: ['jpeg', 'png', 'webp'] } },
-    { marketplace: 'wildberries', category: 'format_resolution', ruleCode: 'wb_no_watermark', description: 'No watermarks or logos on images', severity: 'critical', metadata: { detection: 'watermark' } },
-    { marketplace: 'wildberries', category: 'format_resolution', ruleCode: 'wb_aspect_ratio', description: 'Aspect ratio should be 3:4 or 1:1', severity: 'warning', metadata: { acceptedRatios: [[3,4], [1,1]], tolerance: 0.1 } },
-    
-    // Ozon rules (for strictest merge)
-    { marketplace: 'ozon', category: 'prohibited_content', ruleCode: 'ozon_no_contact_info', description: 'No phone numbers, emails, or external links', severity: 'critical', metadata: { patterns: ['\\d{10,}', '@', '\\.ru/', '\\.com/'] } },
-    { marketplace: 'ozon', category: 'visibility_quality', ruleCode: 'ozon_clear_product_photo', description: 'Product must be clearly visible', severity: 'warning', metadata: {} },
-    { marketplace: 'ozon', category: 'format_resolution', ruleCode: 'ozon_min_res', description: 'Minimum resolution limits apply', severity: 'critical', metadata: { minDimension: 400 } },
-    { marketplace: 'ozon', category: 'format_resolution', ruleCode: 'ozon_no_watermark', description: 'No watermarks permitted', severity: 'critical', metadata: { detection: 'watermark' } },
-  ];
-}
+import {
+  defaultWbRules,
+  defaultOzonRules,
+  getAllDefaultRules,
+  ComplianceValidator,
+  buildComplianceReport,
+  getMessageForRule,
+  validateCardCount,
+} from './compliance';
+export type { ComplianceInput, ComplianceReport } from './compliance';
+export {
+  defaultWbRules,
+  defaultOzonRules,
+  getAllDefaultRules,
+  ComplianceValidator,
+  buildComplianceReport,
+  getMessageForRule,
+  validateCardCount,
+};
 
 /** Calculate compliance score from rule results */
 export function calculateComplianceScore(ruleResults: RuleCheckResult[]): { score: number; criticalFailures: number; warnings: number } {
@@ -798,11 +791,11 @@ export function calculateComplianceScore(ruleResults: RuleCheckResult[]): { scor
 
 /** Get merged (strictest) rules for a project's marketplace selection */
 export function getMergedComplianceRules(marketplaces: string[]): ComplianceRuleInput[] {
-  const allRules = defaultWbRules();
+  const allRules = getAllDefaultRules();
   if (marketplaces.length === 1) {
-    return allRules.filter(r => r.marketplace === marketplaces[0]);
+    return allRules.filter((r) => r.marketplace === marketplaces[0]);
   }
-  // For both marketplaces, use all rules with critical severity from either
+  // For both marketplaces, use all rules (strictest applies)
   return allRules;
 }
 
@@ -810,3 +803,83 @@ export function getMergedComplianceRules(marketplaces: string[]): ComplianceRule
 export function isExportBlocked(criticalFailures: number): boolean {
   return criticalFailures > 0;
 }
+
+
+// ---------------------------------------------------------------------------
+// Task 37533c09 — Batch generation + recoverable export
+// ---------------------------------------------------------------------------
+
+export {
+  createBatchMetadata,
+  isWithinBudget,
+  generateCardProviderConfig,
+  canProceedWithBatch,
+  buildExportFileList,
+  buildExportManifest,
+  buildCsvManifest,
+  generateExportStorageKey,
+  canRecoverExport,
+} from './batch';
+
+export type {
+  BatchGenerationInput,
+  BatchProgress,
+  ExportPackageManifest,
+  OverlayConfig,
+} from './batch';
+
+// ---------------------------------------------------------------------------
+// Task ca05a06d — Quality-risk scoring + Step 0 gating
+// ---------------------------------------------------------------------------
+
+export {
+  analyzeQuality,
+  scoreSharpness,
+  scoreResolution,
+  scoreLighting,
+  scoreBackground,
+  scoreProductVisibility,
+  makeGatingDecision,
+  generateQualityReport,
+  DIMENSION_WEIGHTS,
+} from './quality';
+
+export type {
+  QualityAnalysisInput,
+  QualityAnalysisResult,
+  QualityDimensionScore,
+  QualityRiskEntry,
+  QualityScoreDimension,
+  GatingResult,
+} from './quality';
+
+// ---------------------------------------------------------------------------
+// Task 2ecad978 — Compliance gating for export
+// ---------------------------------------------------------------------------
+
+export {
+  validateExportCard,
+  validateProjectForExport,
+  type CardValidationInput,
+  type CardValidationResult,
+  type ExportValidationResult,
+} from './export-gating';
+
+// ---------------------------------------------------------------------------
+// Task 56cc7032 — Cost controls and rate-limiting
+// ---------------------------------------------------------------------------
+
+export {
+  calculateTotalCost,
+  costsByProvider,
+  costsByCard,
+  predictBatchCost,
+  isRateLimited,
+  checkBudget,
+  generateBatchCostReport,
+  DEFAULT_BUDGET_CONFIG,
+  type CostEntry,
+  type BudgetConfig,
+  type UsageSnapshot,
+  type RateLimitEntry,
+} from './cost-controls';
