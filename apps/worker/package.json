@@ -1,0 +1,16 @@
+{
+  "name": "@cardflow/worker",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@cardflow/core": "file:../../packages/core",
+    "@cardflow/db": "file:../../packages/db",
+    "bullmq": "^5.41.0",
+    "dotenv": "^16.4.7",
+    "ioredis": "^5.6.0"
+  }
+}
